@@ -7,6 +7,34 @@
 - 存储：JSON 单文件数据库，**MySQL 设计保留在 [`sql/schema.sql`](sql/schema.sql)**，两者字段与约束一一对应
 - 判定：审核规则、时段占用、幂等全部是确定性代码；模型只负责「选哪个动作、什么时候收手」
 - 限步：`max_steps` 默认 10，超限返回 `step_limit_reached`（明确的未完成状态）
+- 界面：本地 Web 应用（标准库 HTTP + 单页前端），`python -m src.server` 打开即用
+
+## 界面（本地 Web 应用）
+
+```sh
+python -m src.server            # 自动打开 http://127.0.0.1:8765
+python -m src.server --port 9000 --provider deepseek
+```
+
+左侧选素材、选时段（占用时段也能选，用来看 Agent 怎么处理冲突）、选硬/软约束；右侧出结果与完整决策过程，
+草稿可一键确认（`DRAFT → CONFIRMED`，仍是草稿、不发布）。模型可在 `Mock / DeepSeek` 之间切换。
+
+![运行结果](docs/images/ui-result.png)
+
+<sub>截图是真实跑 `M01 → 18:00 软性` 的结果：18:00 被 M00 占用，草稿落到 19:00 并标待确认，`published=false`。</sub>
+
+| 能力 | 说明 |
+| --- | --- |
+| 素材库 | 8 条合成素材，显示审核态（PASSED / PENDING / RISK），点击选中 |
+| 时段网格 | 08:00–22:00，free / occupied / closed 三态；占用档可选，用来演示冲突 |
+| 参数 | 硬/软约束、补充说明、故障注入（素材不可用 / 保存失败 / 提醒失败）、步数上限 |
+| 结果 | 状态徽章、草稿 ID、待确认项、规则命中、token 用量 |
+| 决策过程 | 每步动作、参数、观测摘要、依据、下一步；可展开完整 JSON |
+| 确认草稿 | `POST /api/confirm`，把 DRAFT 置为 CONFIRMED（`schedule_confirm` 终于接上了） |
+| 重置数据 | 一键把运行库恢复到种子状态 |
+
+接口：`GET /api/bootstrap`、`GET /api/slots?date=`、`POST /api/run`、`POST /api/confirm`、`POST /api/reset`。
+只监听 `127.0.0.1`，无鉴权——本地面向评审的演示，不要暴露到公网。
 
 ## 快速运行
 
@@ -32,7 +60,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 107 个用例
+python -m unittest discover -s tests -v                        # 120 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -143,9 +171,15 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── 03-evaluation.md           # 用例和实际测试记录
 │   ├── 04-ai-usage.md             # AI 使用及验证
 │   ├── 05-retrospective.md        # 用时、不足、未完成部分
-│   └── 06-implementation.md       # 实现细节（循环/动作/数据/错误码/测试）
+│   ├── 06-implementation.md       # 实现细节（循环/动作/数据/错误码/测试）
+│   └── images/                    # 界面截图
+├── web/
+│   ├── index.html                # 单页界面（无构建步骤）
+│   ├── app.css                   # 深色主题
+│   └── app.js                    # 原生 DOM：选素材/时段、运行、确认、时间线
 ├── src/
 │   ├── main.py                   # CLI：读请求 → 跑循环 → 输出 JSON / 决策日志
+│   ├── server.py                 # Web 应用：标准库 HTTP + JSON API
 │   ├── graph.py                  # LangGraph：prepare → agent ⇄ act → finalize
 │   ├── policy.py                 # 决策策略：MockPolicy（默认）/ LLMPolicy（tool-calling）
 │   ├── clients.py                # 模型客户端：DeepSeek / OpenAI 兼容（重试、超时、错误码）
@@ -153,6 +187,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── tools.py                  # 工具实现（ToolResult + 错误码）
 │   ├── rules.py                  # 审核规则 R001–R008（纯函数）
 │   ├── llm.py                    # 意图解析：MockLLM（默认）/ HttpLLM（真实模型）
+│   ├── env.py                    # .env 加载（配置唯一来源）
 │   ├── repository.py             # 数据访问层（换 MySQL 只改这里）
 │   ├── store.py                  # JSON 单文件库：唯一键 + 事务 + 文件锁
 │   ├── util.py                   # 时区、整点对齐、幂等键
@@ -163,6 +198,8 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── test_rules.py             # 规则逐条
 │   ├── test_llm.py               # 意图解析 + HttpLLM 报文
 │   ├── test_clients.py           # DeepSeek 报文/重试/错误码
+│   ├── test_env.py               # .env 解析与优先级
+│   ├── test_server.py            # Web 门面 + HTTP 路由/静态资源/错误码
 │   ├── test_workflow.py          # 六类验收 + ReAct 循环 + 限步
 │   └── test_cli.py               # 退出码、跨进程幂等、--log/--max-steps
 ├── scripts/
@@ -218,6 +255,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | 业务目标与范围 | [需求](docs/01-requirements.md) |
 | ReAct 流程与取舍 | [方案](docs/02-solution.md) |
 | 实现细节 | [实现](docs/06-implementation.md) |
+| 界面 | [本地 Web 应用](#界面本地-web-应用) |
 | 执行路径记录 | [run-records](examples/run-records.md) |
 | MySQL 设计 | [schema.sql](sql/schema.sql) |
 | 测试、预期、结果 | [评估](docs/03-evaluation.md) |

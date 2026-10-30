@@ -248,7 +248,7 @@ with db.transaction() as session:      # 1) 抢锁 2) 读全库 3) 改内存
 | `slot_query` | `slot_query` | 天粒度，返回 `free/occupied/closed` | `DB_UNAVAILABLE` |
 | `slot_find_alternative` | `find_alternatives` | 先顺延、再提前，最多 2 个 | 同上 |
 | `schedule_save_draft` | `schedule_save_draft` | 幂等 + 容量校验 + 复活 CANCELLED | `SLOT_CONFLICT` / `INVALID_STATE` / `DB_UNAVAILABLE` / `DB_WRITE_REJECTED` |
-| （框架动作）| `schedule_confirm` / `notify_push` | 确认草稿 / 提醒幂等 | `CHANNEL_UNAVAILABLE` |
+| （框架动作）| `schedule_confirm` / `notify_push` | 确认草稿（Web `/api/confirm` 已接入）/ 提醒幂等 | `CHANNEL_UNAVAILABLE` |
 
 `audit_check` 审的是 `material_get` 刚返回的那份快照（存在 `ToolContext.observed_metadata` 里），
 而不是重新读库——否则「上游元数据延迟」这类场景审核永远看不到缺字段，补查就成了摆设。
@@ -386,7 +386,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，107 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，120 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -414,15 +414,44 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 107 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 120 个测试。
 
 ---
 
-## 10. 文件索引
+## 10. Web 层（本地应用）
+
+```
+web/index.html + app.css + app.js      ← 单页，无构建步骤
+        ⇅ fetch JSON
+src/server.py  (ThreadingHTTPServer)
+        └── App：bootstrap / slots / run / confirm / reset
+                └── run_request(...)   ← 与 CLI 完全同一个入口
+```
+
+| 端点 | 作用 | 备注 |
+| --- | --- | --- |
+| `GET /` `/app.js` `/app.css` | 静态资源 | 白名单三份文件，路径不可穿越 |
+| `GET /api/bootstrap` | 素材库、已有排期、默认日期、provider 状态 | 界面首屏 |
+| `GET /api/slots?date=` | 当天 `free/occupied/closed` | 时段网格 |
+| `POST /api/run` | 跑一次 ReAct | 返回与 CLI 相同的 JSON（含 `decisions`） |
+| `POST /api/confirm` | `schedule_confirm`，DRAFT → CONFIRMED | 界面「确认草稿」按钮 |
+| `POST /api/reset` | 删除运行库并从 `data/seed.json` 重建 | 演示用 |
+
+几个刻意的取舍：
+
+- **不引 Web 框架**：`requirements.txt` 仍只有 langgraph，"clone 即跑"的卖点不能为界面破功；
+- **占用时段可选**：界面不禁止请求已被占用的档位，否则「18:00 被占→建议 19:00」这个核心场景在界面上根本演不出来；
+- **确认动作走 API**：`schedule_confirm` 之前在代码里但没入口，现在由 `/api/confirm` 接上，状态仍是 `CONFIRMED`（不发布）；
+- **无鉴权、只绑 127.0.0.1**：本地面向评审的演示，不做账号体系；要公网用需自己加网关。
+
+---
+
+## 11. 文件索引
 
 | 关注点 | 文件 |
 | --- | --- |
 | 入口与退出码 | [`src/main.py`](../src/main.py) |
+| Web 应用与 API | [`src/server.py`](../src/server.py) · [`web/`](../web) |
 | ReAct 循环与限步 | [`src/graph.py`](../src/graph.py) |
 | 决策策略（Mock / LLM） | [`src/policy.py`](../src/policy.py) |
 | 模型客户端（DeepSeek / OpenAI 兼容） | [`src/clients.py`](../src/clients.py) |

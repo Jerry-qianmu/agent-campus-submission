@@ -32,6 +32,7 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 | 模块 | 实现 | 负责什么 | **不**负责什么 |
 |---|---|---|---|
 | CLI | [src/main.py](../src/main.py) | 入参校验、退出码、决策日志落盘 | 业务判定 |
+| 界面 | [src/server.py](../src/server.py) · [web/](../web) | HTTP 路由、静态页、调用同一套 `run_request` | 任何业务判定 |
 | 循环 | [src/graph.py](../src/graph.py) | 执行动作、限步、汇总 | 选择动作 |
 | 决策 | [src/policy.py](../src/policy.py) | 每轮读观测选出动作或收手 | 执行动作、改数据 |
 | 动作 | [src/registry.py](../src/registry.py) | 工具清单、参数校验、观测摘要 | 决策 |

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>素材审核与发布排期 Agent</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b8cff'/%3E%3Crect x='9' y='8' width='14' height='3' rx='1.5' fill='white'/%3E%3Crect x='9' y='14' width='14' height='3' rx='1.5' fill='white' opacity='.8'/%3E%3Crect x='9' y='20' width='9' height='3' rx='1.5' fill='white' opacity='.6'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▤</span>
+      <div>
+        <h1>素材审核与发布排期</h1>
+        <p class="sub">LangGraph ReAct · 只保存草稿，不接真实发布</p>
+      </div>
+    </div>
+    <div class="actions">
+      <label class="provider">
+        <span>模型</span>
+        <select id="provider">
+          <option value="mock">离线 Mock（规则）</option>
+          <option value="deepseek">DeepSeek</option>
+        </select>
+        <span id="provider-hint" class="hint"></span>
+      </label>
+      <button id="reset" class="btn ghost" title="把运行库重置回种子数据">重置数据</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <h2>1 · 选素材</h2>
+      <div id="materials" class="materials"></div>
+
+      <h2>2 · 选时段</h2>
+      <div class="row space">
+        <input type="date" id="date" />
+        <span class="legend">
+          <i class="dot free"></i>空闲
+          <i class="dot occupied"></i>占用
+          <i class="dot closed"></i>不可用
+        </span>
+      </div>
+      <div id="slots" class="slots"></div>
+
+      <h2>3 · 约束与选项</h2>
+      <div class="row">
+        <label class="radio"><input type="radio" name="constraint" value="soft" checked /> 希望（可调整）</label>
+        <label class="radio"><input type="radio" name="constraint" value="hard" /> 必须（不得改期）</label>
+      </div>
+      <textarea id="user_text" rows="2" placeholder="可选：补充说明，例如「别太晚」「必须这个时间」"></textarea>
+      <div class="row">
+        <label class="field">故障注入
+          <select id="simulate">
+            <option value="none">不注入</option>
+            <option value="material_lookup">素材服务不可用</option>
+            <option value="save_failure">保存草稿失败</option>
+            <option value="notify_failure">提醒失败</option>
+          </select>
+        </label>
+        <label class="field">步数上限
+          <input type="number" id="max_steps" value="10" min="1" max="20" />
+        </label>
+      </div>
+
+      <button id="run" class="btn primary">运行 Agent</button>
+      <p id="form-error" class="error" hidden></p>
+    </section>
+
+    <section class="panel">
+      <h2>运行结果</h2>
+      <div id="empty" class="empty">
+        选一个素材和时段，点「运行 Agent」。<br />
+        <span class="muted">流程：读素材 → 规则审核 → 查时段 → 存草稿 → 提醒，每一步由模型选动作。</span>
+      </div>
+      <div id="result" hidden></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
