@@ -1,7 +1,7 @@
 # 测试与评估
 
 本页记录离线流程验证 + 一次真实模型（DeepSeek）联调。
-离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 145 tests … OK`。
+离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 155 tests … OK`。
 
 ## 必须验收的六类
 
@@ -67,7 +67,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `400 Invalid 'tools[0].function.name'` | 工具名带点号，不满足 `^[a-zA-Z0-9_-]+$` | 全部改下划线 | `test_clients` + 联调复跑 |
 | `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就收尾 | prompt 规则 7 + `finalize` 降级为 `blocked` | `test_finish_without_draft_is_downgraded_to_blocked` |
 
-## 单元/集成测试分布（共 145）
+## 单元/集成测试分布（共 155）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
@@ -78,6 +78,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `tests/test_workflow.py` | 30 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
 | `tests/test_env.py` | 11 | `.env` ?????/??/export/BOM/CRLF??`.env` ?????????????? |
 | `tests/test_env.py` | 11 | `.env` 解析（注释/引号/export/BOM/CRLF）、`.env` 覆盖进程变量、缺失文件无操作 |
+| `tests/test_tooling.py` | 10 | `@tool` 扫描发现 5 个动作、schema 含 finish、名字字符集、重名/点号/缺 formatter 被拒、装饰器注册后可分发 |
 | `tests/test_server.py` | 31 | Web 门面（bootstrap/slots/run/confirm/cancel/drafts/material 详情 + 冲突扫描 + 素材增删改查）+ HTTP 路由、201/409/400、静态资源 |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
@@ -101,7 +102,8 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | 目录、文档齐全 | README + docs 六篇 + sql + tests | 满足目录规范 |
 | 可复现 | 10 组 CLI 样例、`test-results.txt`、`scripts/regen_examples.py` | 已在 Python 3.12.4 + langgraph 1.2.18 验证 |
 | 使用 LangGraph | `src/graph.py` 的 `StateGraph`，`agent ⇄ act` 循环 | 已实现，非伪代码 |
-| ReAct 决策 | `src/policy.py` 选动作 + `src/registry.py` 执行 + `observations` 回灌；三条执行路径见 [run-records](../examples/run-records.md) | 循环真实；默认策略是规则版 mock |
+| ReAct 决策 | `src/policy.py` 选动作 + `execute_tool` 执行 + `observations` 回灌；三条执行路径见 [run-records](../examples/run-records.md) | 循环真实；默认策略是规则版 mock |
+| 工具扩展 | 在 `src/toolbox/` 加一个 `@tool` 函数，重跑测试即被发现并进入 schema | 无需改 registry |
 | 步数与未完成状态 | `max_steps` 默认 10，超限返回 `step_limit_reached` | 已实现并有测试 |
 | 六类验收 | 六个示例 + 对应测试 | 全部通过 |
 | MySQL 设计保留 | `sql/schema.sql` + `docs/06` 映射表 | 保留且与 JSON 库一一对应 |

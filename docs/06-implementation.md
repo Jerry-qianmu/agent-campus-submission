@@ -14,7 +14,9 @@ CLI (src/main.py)  --log 写决策日志 JSONL
         ├── 意图解析 src/llm.py      MockLLM（默认）/ HttpLLM（真实模型）
         ├── 决策策略 src/policy.py   MockPolicy（默认）/ LLMPolicy（tool-calling）
         ├── 模型客户端 src/clients.py OpenAI 兼容 / DeepSeek（重试、超时、错误码）
-        ├── 动作注册 src/registry.py 5 个工具 + JSON Schema + 观测摘要
+        ├── 动作注册 src/registry.py 发现 toolbox 包 + JSON Schema + finish
+        ├── 动作原语 src/tooling.py  @tool 装饰器 / 注册表 / 执行 / 摘要
+        ├── 动作实现 src/toolbox/    每个文件一个动作，@tool 声明即注册
         ├── 工具实现 src/tools.py    读素材 / 审核 / 查时段 / 存草稿 / 提醒
         │     ├── 规则判定 src/rules.py  R001–R009 纯函数
         │     └── 数据访问 src/repository.py
@@ -54,7 +56,7 @@ flowchart TD
 | `act` | 用 `registry.execute_tool` 执行动作，产出 `observation` | 不决定下一步 |
 | `finalize` | 汇总 `decisions`/`observations` 成结果，触发一次提醒 | 不产生新的业务结论 |
 
-### 2.3 模型可选的动作（`src/registry.py`）
+### 2.3 模型可选的动作（`src/toolbox/` + `src/tooling.py`）
 
 | 动作 | 参数 | 返回摘要（模型看到的那句话） |
 | --- | --- | --- |
@@ -65,6 +67,36 @@ flowchart TD
 | `schedule_save_draft` | `material_id`, `slot` | 草稿 ID / 幂等命中 / 失败原因 |
 
 `finish` 不是数据库动作，由策略直接返回终局，因此不会出现在 `observations` 里。
+
+#### 注册与发现
+
+动作不再手写在字典里，而是**用装饰器声明 + 扫描包自动发现**：
+
+```python
+# src/toolbox/material.py
+@tool(
+    name="material_get",
+    description="按素材ID读取元数据与最近一次审核结论。",
+    parameters=required_schema({"material_id": "string"}),
+    formatter=_format,          # 决定模型看到的观测摘要
+)
+def material_get_tool(ctx, args):
+    return material_get(ctx.db, args["material_id"], ctx.faults)
+```
+
+`import src.registry` 时执行 `discover()`：用 `pkgutil.iter_modules` 扫 `src/toolbox`，逐个 import，
+装饰器在导入时把 `ToolSpec` 写进全局 `REGISTRY`。于是：
+
+| 关注点 | 谁负责 | 表现 |
+| --- | --- | --- |
+| 名字 / 描述 / 参数 schema | `@tool` 声明 | `tool_schemas()` 自动带上，供真实模型 function calling |
+| 执行 | `execute_tool()` 按名字查表 | 未知动作、缺参数、类型错都降级成失败观测，不击穿循环 |
+| 观测摘要 | `ToolSpec.formatter` | 每工具自带，不再靠 `summarize()` 的 if/elif 猜 |
+| 校验 | 注册时 | 名字必须匹配 `^[a-zA-Z0-9_-]+$`（点号会让真实模型 400）、禁止重名、必须有 formatter |
+
+新增一个动作 = **在 `src/toolbox/` 加一个文件 + 一行 `@tool`**，`registry.py` 不用改。
+发现是幂等的（`discover()` 只扫一次），重名会在导入阶段直接报 `ToolRegistrationError`，
+而不是运行时静默覆盖。
 
 ### 2.4 决策与观测
 
@@ -398,7 +430,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，145 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，155 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -407,6 +439,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 意图 | `tests/test_llm.py` | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文解析 |
 | 流程 | `tests/test_workflow.py` | 六类验收 + 补查恢复 + 提醒降级 + 取消复活 + 限步未完成 + 决策日志字段 + 假模型驱动循环 |
 | Web | `tests/test_server.py` | 门面（bootstrap/slots/drafts/素材增删改查）+ HTTP 路由与 201/409/400 |
+| 工具注册 | `tests/test_tooling.py` | 扫描发现 5 个动作、schema 含 finish、名字字符集、重名/点号/缺 formatter 被拒、装饰器注册后可被 `execute_tool` 分发 |
 | CLI | `tests/test_cli.py` | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 每个用例一份独立临时库（`tests/support.py`），互不污染；`examples/*.output.json` 由 `python -m scripts.regen_examples` 真实跑出来，不是手写。
@@ -427,7 +460,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 145 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 155 个测试。
 
 ---
 
@@ -480,7 +513,8 @@ src/server.py  (ThreadingHTTPServer)
 | 决策策略（Mock / LLM） | [`src/policy.py`](../src/policy.py) |
 | 模型客户端（DeepSeek / OpenAI 兼容） | [`src/clients.py`](../src/clients.py) |
 | `.env` 加载 | [`src/env.py`](../src/env.py) |
-| 动作注册表与观测摘要 | [`src/registry.py`](../src/registry.py) |
+| 动作注册与发现 | [`src/registry.py`](../src/registry.py)（扫包）+ [`src/toolbox/`](../src/toolbox)（5 个动作） |
+| `@tool` 装饰器、注册表、执行与摘要 | [`src/tooling.py`](../src/tooling.py) |
 | 工具实现 | [`src/tools.py`](../src/tools.py) |
 | 审核规则 | [`src/rules.py`](../src/rules.py) |
 | 意图解析 | [`src/llm.py`](../src/llm.py) |

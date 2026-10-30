@@ -6,6 +6,7 @@
 - 决策循环：[LangGraph](https://langchain-ai.github.io/langgraph/) 的 `prepare → agent ⇄ act → finalize`，模型每轮读工具观测再决定下一步
 - 存储：JSON 单文件数据库，**MySQL 设计保留在 [`sql/schema.sql`](sql/schema.sql)**，两者字段与约束一一对应
 - 判定：审核规则、时段占用、幂等全部是确定性代码；模型只负责「选哪个动作、什么时候收手」
+- 工具：`@tool` 装饰器声明 + 扫描 `src/toolbox/` 自动注册，新增动作只改一个文件
 - 限步：`max_steps` 默认 10，超限返回 `step_limit_reached`（明确的未完成状态）
 - 界面：本地 Web 应用（标准库 HTTP + 单页前端），`python -m src.server` 打开即用
 
@@ -92,7 +93,7 @@ python -m src.main --input examples/normal.input.json --compact
 {"status":"completed","mode":"mock_react","material_id":"M02","draft":{"saved":true,"draft_id":2,"status":"DRAFT"},"published":false,"steps":5,"tool_calls":4,...}
 ```
 
-想更彻底一点，跑一遍测试（145 个用例，约 12 秒）：
+想更彻底一点，跑一遍测试（155 个用例，约 12 秒）：
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -207,7 +208,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 145 个用例
+python -m unittest discover -s tests -v                        # 155 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -397,9 +398,11 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── graph.py                  # LangGraph：prepare → agent ⇄ act → finalize
 │   ├── policy.py                 # 决策策略：MockPolicy（默认）/ LLMPolicy（tool-calling）
 │   ├── clients.py                # 模型客户端：DeepSeek / OpenAI 兼容（重试、超时、错误码）
-│   ├── registry.py               # 动作注册表：5 个工具 + JSON Schema + 观测摘要
+│   ├── registry.py               # 动作发现：扫描 toolbox 包 + JSON Schema + finish
+│   ├── tooling.py                # @tool 装饰器、注册表、执行与观测摘要
+│   ├── toolbox/                  # 每个动作一个文件，@tool 声明即注册
 │   ├── tools.py                  # 工具实现（ToolResult + 错误码）
-│   ├── rules.py                  # 审核规则 R001–R008（纯函数）
+│   ├── rules.py                  # 审核规则 R001–R009（纯函数）
 │   ├── llm.py                    # 意图解析：MockLLM（默认）/ HttpLLM（真实模型）
 │   ├── env.py                    # .env 加载（配置唯一来源）
 │   ├── repository.py             # 数据访问层（换 MySQL 只改这里）
@@ -414,6 +417,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── test_clients.py           # DeepSeek 报文/重试/错误码
 │   ├── test_env.py               # .env 解析与优先级
 │   ├── test_server.py            # Web 门面 + HTTP 路由/静态资源/错误码
+│   ├── test_tooling.py           # @tool 发现、注册校验、schema 与分发
 │   ├── test_workflow.py          # 六类验收 + ReAct 循环 + 限步
 │   └── test_cli.py               # 退出码、跨进程幂等、--log/--max-steps
 ├── scripts/

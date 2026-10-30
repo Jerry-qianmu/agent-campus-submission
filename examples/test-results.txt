@@ -125,6 +125,17 @@ test_seed_missing_creates_empty_database (test_store.StoreTests.test_seed_missin
 test_seeded_from_seed_file (test_store.StoreTests.test_seeded_from_seed_file) ... ok
 test_transaction_persists_and_is_atomic (test_store.StoreTests.test_transaction_persists_and_is_atomic) ... ok
 test_unique_material_date (test_store.StoreTests.test_unique_material_date) ... ok
+test_discover_finds_all_tools (test_tooling.DiscoveryTests.test_discover_finds_all_tools) ... ok
+test_discover_is_idempotent (test_tooling.DiscoveryTests.test_discover_is_idempotent) ... ok
+test_every_spec_is_complete (test_tooling.DiscoveryTests.test_every_spec_is_complete) ... ok
+test_names_are_model_safe (test_tooling.DiscoveryTests.test_names_are_model_safe)
+function name 只允许字母数字下划线连字符；点号会让真实模型 400。 ... ok
+test_schemas_include_finish_last (test_tooling.DiscoveryTests.test_schemas_include_finish_last) ... ok
+test_decorator_registers_and_dispatches (test_tooling.RegistrationTests.test_decorator_registers_and_dispatches) ... ok
+test_dotted_name_rejected (test_tooling.RegistrationTests.test_dotted_name_rejected) ... ok
+test_duplicate_name_rejected (test_tooling.RegistrationTests.test_duplicate_name_rejected) ... ok
+test_missing_formatter_rejected (test_tooling.RegistrationTests.test_missing_formatter_rejected) ... ok
+test_summarize_marks_retryable_failures (test_tooling.RegistrationTests.test_summarize_marks_retryable_failures) ... ok
 test_missing_argument (test_workflow.RegistryGuardTests.test_missing_argument) ... ok
 test_non_dict_arguments (test_workflow.RegistryGuardTests.test_non_dict_arguments) ... ok
 test_unknown_tool (test_workflow.RegistryGuardTests.test_unknown_tool) ... ok
@@ -166,6 +177,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 145 tests in 12.339s
+Ran 155 tests in 12.379s
 
 OK

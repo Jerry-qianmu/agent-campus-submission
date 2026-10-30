@@ -16,7 +16,7 @@ from .errors import LockTimeout
 from .repository import DuplicateKey, Repository
 from .rules import AuditReport, audit
 from .store import JsonDatabase
-from .util import day_window, floor_hour, idempotency_key, to_iso
+from .util import content_fingerprint, day_window, floor_hour, idempotency_key, to_iso
 
 # -- 错误码（与 docs/06-implementation.md 的错误码表一致） --------------------
 ERR_NOT_FOUND = "NOT_FOUND"
@@ -124,6 +124,21 @@ def material_get(
 # ---------------------------------------------------------------------------
 # 2. 规则审核
 # ---------------------------------------------------------------------------
+def duplicate_materials(
+    db: JsonDatabase, material_id: str, metadata: dict[str, Any]
+) -> list[str]:
+    """内容指纹相同的其它素材 ID：同一份素材换 ID 重传时靠它认出来。"""
+    fingerprint = content_fingerprint(metadata)
+    with db.transaction() as session:
+        rows = session.select("materials")
+    return sorted(
+        row["id"]
+        for row in rows
+        if row["id"] != material_id
+        and content_fingerprint(dict(row.get("metadata") or {})) == fingerprint
+    )
+
+
 def audit_check(
     db: JsonDatabase,
     material_id: str,

@@ -38,7 +38,7 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 | 界面 | [src/server.py](../src/server.py) · [web/](../web) | HTTP 路由、静态页、调用同一套 `run_request` | 任何业务判定 |
 | 循环 | [src/graph.py](../src/graph.py) | 执行动作、限步、汇总 | 选择动作 |
 | 决策 | [src/policy.py](../src/policy.py) | 每轮读观测选出动作或收手 | 执行动作、改数据 |
-| 动作 | [src/registry.py](../src/registry.py) | 工具清单、参数校验、观测摘要 | 决策 |
+| 动作 | [src/registry.py](../src/registry.py) + [src/toolbox/](../src/toolbox) | `@tool` 声明、扫包发现、参数校验、观测摘要 | 决策 |
 | 工具 | [src/tools.py](../src/tools.py) | 能不能排、是否重复、是否占位 | 决定调用顺序 |
 | 规则 | [src/rules.py](../src/rules.py) | 通过 / 缺失 / 风险 | —— |
 | 数据 | [src/repository.py](../src/repository.py) · [src/store.py](../src/store.py) | 表读写、唯一键、事务 | —— |
