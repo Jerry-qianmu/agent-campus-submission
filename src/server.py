@@ -36,10 +36,11 @@ from .clients import ChatError
 from .env import load_dotenv
 from .errors import AgentError, InvalidInput
 from .graph import MAX_STEPS_DEFAULT, run_request
+from .registry import duplicate_materials
 from .repository import Repository
 from .store import JsonDatabase
 from .tools import schedule_cancel, schedule_confirm, slot_query
-from .util import TZ, parse_datetime, to_iso
+from .util import TZ, content_fingerprint, parse_datetime, to_iso
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "web"
@@ -81,9 +82,20 @@ class App:
             schedules = [dict(row) for row in session.select("publish_schedule")]
 
         items = []
+        fingerprints = {
+            material["id"]: content_fingerprint(dict(material.get("metadata") or {}))
+            for material in materials
+        }
+        by_fingerprint: dict[str, list[str]] = {}
+        for material_id, fingerprint in fingerprints.items():
+            by_fingerprint.setdefault(fingerprint, []).append(material_id)
+
         for material in materials:
             metadata = material.get("metadata") or {}
             review = reviews.get(material["id"]) or {}
+            duplicates = sorted(
+                set(by_fingerprint[fingerprints[material["id"]]]) - {material["id"]}
+            )
             items.append(
                 {
                     "id": material["id"],
@@ -94,6 +106,7 @@ class App:
                     "audit_status": review.get("status") or "PENDING",
                     "risk_reason": review.get("risk_reason"),
                     "release_date": review.get("release_date"),
+                    "duplicate_of": duplicates,
                 }
             )
 
@@ -200,10 +213,13 @@ class App:
             )
 
         metadata = material.get("metadata") or {}
+        fingerprint = content_fingerprint(dict(metadata))
         return {
             "id": mid,
             "title": metadata.get("title") or mid,
             "metadata": metadata,
+            "content_hash": fingerprint,
+            "duplicate_of": duplicate_materials(self.db, mid, dict(metadata)),
             "review": {
                 "status": (review or {}).get("status") or "PENDING",
                 "risk_reason": (review or {}).get("risk_reason"),

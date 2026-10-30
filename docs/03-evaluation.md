@@ -1,7 +1,7 @@
 # 测试与评估
 
 本页记录离线流程验证 + 一次真实模型（DeepSeek）联调。
-离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 128 tests … OK`。
+离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 136 tests … OK`。
 
 ## 必须验收的六类
 
@@ -28,6 +28,8 @@
 | 没给时间 | 只有 `material_id` | 取当天首个可用时段，标待确认 | 通过 |
 | 没给素材 ID | 只有一段话 | `needs_input`，`missing_fields=["material_id"]` | 通过 |
 | 达到步数上限 | `--max-steps 2` | `step_limit_reached`，`finished=false`，不落库 | 通过 |
+| 同素材再排一个时段 | 先排 20:00，再要 21:00 | `blocked` + `existing_schedule` 指向原草稿，表里仍只有一行 | 通过 |
+| 内容重复 | M08 与 M09 同一文件 | `blocked`，`review_status=RISK`，`risk_reason` 含 R009，`duplicate_of=[M09]` | 通过 |
 
 ## 执行路径记录
 
@@ -61,18 +63,18 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `400 Invalid 'tools[0].function.name'` | 工具名带点号，不满足 `^[a-zA-Z0-9_-]+$` | 全部改下划线 | `test_clients` + 联调复跑 |
 | `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就收尾 | prompt 规则 7 + `finalize` 降级为 `blocked` | `test_finish_without_draft_is_downgraded_to_blocked` |
 
-## 单元/集成测试分布（共 128）
+## 单元/集成测试分布（共 136）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
 | `tests/test_store.py` | 10 | 唯一键、NULL 语义、自增、回滚不落盘、原子写、8 线程并发、锁 PermissionError 重试、空库初始化 |
-| `tests/test_rules.py` | 13 | R001–R008 逐条、缺失优先于风险、`metadata=None` |
+| `tests/test_rules.py` | 18 | R001–R009 逐条、缺失优先于风险、`metadata=None`、内容指纹稳定性 |
 | `tests/test_llm.py` | 15 | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文与代码围栏剥离 |
 | `tests/test_clients.py` | 20 | DeepSeek 报文、tool_calls/usage 解析、429 重试与 Retry-After、400/401/402 不重试、超时/网络错误、思考模式参数、env 工厂 |
-| `tests/test_workflow.py` | 28 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
+| `tests/test_workflow.py` | 30 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
 | `tests/test_env.py` | 11 | `.env` ?????/??/export/BOM/CRLF??`.env` ?????????????? |
 | `tests/test_env.py` | 11 | `.env` 解析（注释/引号/export/BOM/CRLF）、`.env` 覆盖进程变量、缺失文件无操作 |
-| `tests/test_server.py` | 21 | Web 门面（bootstrap/slots/run/confirm/cancel/drafts/material 详情 + 冲突扫描）+ HTTP 路由、静态资源、404/400 |
+| `tests/test_server.py` | 22 | Web 门面（bootstrap/slots/run/confirm/cancel/drafts/material 详情 + 冲突扫描）+ HTTP 路由、静态资源、404/400 |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 ## 可自动化的硬断言

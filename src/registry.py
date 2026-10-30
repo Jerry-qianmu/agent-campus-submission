@@ -30,7 +30,7 @@ from .tools import (
     schedule_save_draft,
     slot_query,
 )
-from .util import parse_datetime, to_iso
+from .util import content_fingerprint, parse_datetime, to_iso
 
 # 模型可选动作的完整清单（finish 不是 DB 动作，由策略返回 Decision.finish）
 TOOL_NAMES = (
@@ -102,7 +102,28 @@ def _audit_check(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
         if material is None:
             return fail_result("NOT_FOUND", f"素材 {material_id} 不存在")
         metadata = dict(material.get("metadata") or {})
-    return audit_check(ctx.db, material_id, metadata, ctx.faults)
+    duplicates = duplicate_materials(ctx.db, material_id, metadata)
+    result = audit_check(
+        ctx.db, material_id, metadata, ctx.faults, duplicate_of=duplicates
+    )
+    if result.ok:
+        result.data["content_fingerprint"] = content_fingerprint(metadata)
+    return result
+
+
+def duplicate_materials(
+    db: JsonDatabase, material_id: str, metadata: dict[str, Any]
+) -> list[str]:
+    """内容指纹相同的其它素材 ID：同一份素材换 ID 重传时靠它认出来。"""
+    fingerprint = content_fingerprint(metadata)
+    with db.transaction() as session:
+        rows = session.select("materials")
+    return sorted(
+        row["id"]
+        for row in rows
+        if row["id"] != material_id
+        and content_fingerprint(dict(row.get("metadata") or {})) == fingerprint
+    )
 
 
 def _slot_query(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:

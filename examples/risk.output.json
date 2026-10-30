@@ -25,6 +25,8 @@
   "draft": {
     "saved": false
   },
+  "existing_schedule": null,
+  "duplicate_of": [],
   "notify": {
     "ok": true,
     "event": "review_blocked",

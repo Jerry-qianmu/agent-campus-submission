@@ -66,6 +66,34 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse(result["draft"]["saved"])
             self.assertEqual(len(read_table(db, "publish_schedule")), 1)
 
+    def test_duplicate_material_content_blocks(self):
+        """M08 与 M09 是同一文件（指纹相同）：换 ID 重传也要被 R009 拦下。"""
+        with TempDb() as db:
+            result = self.run_example(db, "duplicate-material")
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["review_status"], "RISK")
+            self.assertIn("R009", result["risk_reason"])
+            self.assertEqual(result["duplicate_of"], ["M09"])
+            self.assertFalse(result["draft"]["saved"])
+            self.assertEqual(len(read_table(db, "publish_schedule")), 1)
+
+    def test_same_material_cannot_hold_two_slots(self):
+        """同一素材已经有一条有效排期时，换到另一个时段应被拒绝，而不是多占一个档。"""
+        with TempDb() as db:
+            first = run_request(load_example("normal"), db, now=NOW)
+            second_request = {**load_example("normal"), "request_id": "req-second-slot"}
+            second_request["desired_slot"] = "2026-11-05T21:00:00+08:00"
+            second = run_request(second_request, db, now=NOW)
+            rows = [row for row in read_table(db, "publish_schedule") if row["material_id"] == "M02"]
+
+        self.assertEqual(first["status"], "completed")
+        self.assertEqual(second["status"], "blocked")
+        self.assertFalse(second["draft"]["saved"])
+        self.assertEqual(second["existing_schedule"]["draft_id"], first["draft"]["draft_id"])
+        self.assertEqual(second["existing_schedule"]["date"], "2026-11-05T20:00:00+08:00")
+        self.assertEqual(len(rows), 1)  # 只占了一个档
+        self.assertIn("已排期", second["message"])
+
     def test_slot_conflict_suggests_alternative(self):
         """参考实例：M01 要 18:00，被 M00 占用，19:00 可用。"""
         with TempDb() as db:

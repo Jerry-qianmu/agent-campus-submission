@@ -247,6 +247,20 @@ class MockPolicy:
             latest = saves[-1]
             if latest["ok"]:
                 return self._finish_saved(ctx, slot)
+            if latest.get("code") == "ALREADY_SCHEDULED":
+                existing = (latest.get("data") or {}).get("existing") or {}
+                return finish(
+                    "blocked",
+                    "该素材已经有一条有效排期，不能重复创建；改期必须先取消原草稿",
+                    reason=(
+                        f"素材已排期在 {_fmt(existing.get('date'))}"
+                        f"（草稿 #{existing.get('draft_id')}，{existing.get('status')}），未重复创建"
+                    ),
+                    pending=[
+                        f"如需改期：先取消草稿 #{existing.get('draft_id')}（{_fmt(existing.get('date'))}）再重跑",
+                        "如需保留原排期：忽略本次请求",
+                    ],
+                )
             if latest.get("retryable") and len(saves) == 1:
                 return action(
                     "schedule_save_draft",

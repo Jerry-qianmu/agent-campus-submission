@@ -80,7 +80,10 @@ function renderMaterials() {
         <span class="title">${esc(item.title)}</span>
         <span class="tags">${esc((item.tags || []).join(" · ") || "无标签")}${item.duration_sec ? " · " + esc(item.duration_sec) + "s" : ""}</span>
       </span>
-      <span class="badge ${esc(status)}">${esc(item.audit_status || "PENDING")}</span>`;
+      <span class="badge ${esc(status)}">${esc(item.audit_status || "PENDING")}</span>
+      ${(item.duplicate_of || []).length
+        ? `<span class="badge conflict" title="内容指纹与 ${esc(item.duplicate_of.join("、"))} 相同">重复</span>`
+        : ""}`;
     row.title = item.risk_reason || "点击查看详情";
     row.onclick = () => openMaterial(item.id);
     box.appendChild(row);
@@ -317,6 +320,7 @@ function renderDetail(data) {
     ["版权", meta.copyright || "—"],
     ["作者", meta.author || "—"],
     ["标签", (meta.tags || []).join(" · ") || "—"],
+    ["内容指纹", data.content_hash ? data.content_hash.slice(0, 12) : "—"],
   ];
 
   const schedules = data.schedules.length
@@ -347,6 +351,11 @@ function renderDetail(data) {
         .map(([slot, ids]) => `${esc(fmtSlot(slot))} 被 ${esc(ids.join("、"))} 同时占用`)
         .join("；")}</div>`
     : "";
+  const duplicateBox = (data.duplicate_of || []).length
+    ? `<div class="warn-box">内容重复：与素材 ${esc(data.duplicate_of.join("、"))} 是同一份文件（指纹 ${esc(
+        (data.content_hash || "").slice(0, 12)
+      )}），发布前必须去重。</div>`
+    : "";
 
   return `
     <div class="detail-head">
@@ -369,6 +378,7 @@ function renderDetail(data) {
 
     <div class="section-title">当前排期（${data.schedules.length}）</div>
     ${schedules}
+    ${duplicateBox}
     ${conflictBox}
     <div class="row" style="margin-top:14px">
       <button class="btn small" data-fill="${esc(data.id)}">用这个素材排期</button>

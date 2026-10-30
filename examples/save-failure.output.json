@@ -17,6 +17,8 @@
   "draft": {
     "saved": false
   },
+  "existing_schedule": null,
+  "duplicate_of": [],
   "notify": {},
   "published": false,
   "steps": 6,

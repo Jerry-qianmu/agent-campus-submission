@@ -21,6 +21,7 @@ CASES = (
     "conflict",
     "hard-conflict",
     "duplicate",
+    "duplicate-material",
     "save-failure",
     "tool-failure",
     "metadata-lag",

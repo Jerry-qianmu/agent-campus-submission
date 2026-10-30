@@ -56,3 +56,25 @@ def sha256_text(text: str) -> str:
 def idempotency_key(material_id: str, slot_iso: str, rules_version: str) -> str:
     """与 publish_schedule.uk_idem 对应的幂等键。"""
     return sha256_text(f"{material_id}|{slot_iso}|{rules_version}")
+
+
+def content_fingerprint(metadata: dict | None) -> str:
+    """素材内容指纹：用于识别「同一份素材换了 ID 又传一次」。
+
+    归一化后再哈希，避免大小写/空白造成假不重复：
+        有 file_url → file|<url>|<duration>|<format>
+        无 file_url → meta|<title>|<duration>|<format>
+
+    边界：mock 环境没有文件字节，只能指纹元数据；真实环境应当对文件流做 sha256
+    （或直接用存储侧的 etag），那时把本函数换成文件哈希即可，上层无需改动。
+    """
+    md = metadata if isinstance(metadata, dict) else {}
+    file_url = str(md.get("file_url") or "").strip().lower()
+    duration = md.get("duration_sec")
+    fmt = str(md.get("format") or "").strip().lower()
+    if file_url:
+        basis = f"file|{file_url}|{duration}|{fmt}"
+    else:
+        title = str(md.get("title") or "").strip().lower()
+        basis = f"meta|{title}|{duration}|{fmt}"
+    return sha256_text(basis)

@@ -94,6 +94,14 @@ class Repository:
             "publish_schedule", material_id=material_id, date=date
         )
 
+    def active_schedules_of(self, material_id: str) -> list[dict[str, Any]]:
+        """该素材当前所有有效排期（DRAFT/CONFIRMED），用于「一个素材只排一次」的校验。"""
+        return [
+            row
+            for row in self.session.select("publish_schedule", material_id=material_id)
+            if row["status"] in ACTIVE_SCHEDULE_STATUS
+        ]
+
     def insert_schedule(self, row: dict[str, Any]) -> dict[str, Any]:
         stamped = {"create_time": _now_iso(), "update_time": _now_iso(), **row}
         try:

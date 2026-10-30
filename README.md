@@ -9,14 +9,14 @@
 - 限步：`max_steps` 默认 10，超限返回 `step_limit_reached`（明确的未完成状态）
 - 界面：本地 Web 应用（标准库 HTTP + 单页前端），`python -m src.server` 打开即用
 
-## 从 clone 到打开界面（约 3 分钟）
+## 安装
 
 ### 0 · 前置要求
 
 | 需要 | 说明 |
 | --- | --- |
 | Python **3.10+** | `python --version` 能看到 3.10 及以上 |
-| git | 用来 clone |
+| git 
 | 数据库 / API key | **都不需要**。默认离线 Mock，`data/seed.json` 就是数据库 |
 
 ### 1 · 克隆仓库
@@ -89,7 +89,7 @@ python -m src.main --input examples/normal.input.json --compact
 {"status":"completed","mode":"mock_react","material_id":"M02","draft":{"saved":true,"draft_id":2,"status":"DRAFT"},"published":false,"steps":5,"tool_calls":4,...}
 ```
 
-想更彻底一点，跑一遍测试（128 个用例，约 12 秒）：
+想更彻底一点，跑一遍测试（136 个用例，约 12 秒）：
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -162,7 +162,7 @@ python -m src.server --provider deepseek  # 默认用真实模型（界面右上
 
 | 能力 | 说明 |
 | --- | --- |
-| 素材库 | 8 条合成素材，显示审核态（PASSED / PENDING / RISK）；点标题进详情 |
+| 素材库 | 10 条合成素材，显示审核态（PASSED / PENDING / RISK）；内容重复的会多一个「重复」徽章 |
 | 时段网格 | 08:00–22:00，free / occupied / closed 三态；占用档可选，用来演示冲突 |
 | 参数 | 硬/软约束、补充说明、故障注入（素材不可用 / 保存失败 / 提醒失败）、步数上限 |
 | 运行结果 | 状态徽章、草稿 ID、待确认项、规则命中、token 用量、完整决策时间线 |
@@ -190,6 +190,7 @@ python -m src.main --input examples/save-failure.input.json    # 保存失败明
 python -m src.main --input examples/tool-failure.input.json    # 工具失败
 python -m src.main --input examples/metadata-lag.input.json    # 元数据延迟 → 补查后重审再排
 python -m src.main --input examples/not-found.input.json       # 素材不存在
+python -m src.main --input examples/duplicate-material.input.json  # 同文件换 ID 重传 → R009 阻断
 
 # 决策日志（每行一轮：动作 / 参数 / 观测摘要 / 后续 / 依据）
 python -m src.main --input examples/conflict.input.json --log examples/run-record-soft-conflict.jsonl
@@ -197,7 +198,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 128 个用例
+python -m unittest discover -s tests -v                        # 136 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -402,22 +403,12 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | AI 辅助边界 | [AI 使用](docs/04-ai-usage.md) |
 | 用时与未完成部分 | [复盘](docs/05-retrospective.md) |
 
-## 边界（先说明，避免误解）
-
+## 边界
 - `published` 恒为 `false`，没有任何代码路径写 `PUBLISHED` 或 `release_date`；`status` 上限是 `CONFIRMED`（仍是草稿）。
 - 硬性时间要求（「必须 18:00」）遇到冲突时**不会被自动改期**，只会把冲突和选项交回用户。
 - 素材信息缺失时不猜、不填默认值，只列出缺什么。
 - 默认决策是规则版 `MockPolicy`；DeepSeek 已实跑 3 条路径（单模型单次，样本不足以下质量结论）。
+- 一个素材同一时刻只允许一条有效排期（DRAFT/CONFIRMED）：换时段重排会被 `ALREADY_SCHEDULED` 拒绝，结果里带出原草稿，改期需先取消。
+- 同一份文件换个素材 ID 重传会被内容指纹识别（R009），审核直接判 RISK、不排期。
 - 达到 `max_steps` 会返回 `step_limit_reached`，`finished=false`，不产生草稿。
 
-## 提交信息
-
-| 项 | 值 |
-| --- | --- |
-| 题号 | 素材审核与发布排期 Agent |
-| GitHub | _（待填）_ |
-| commit SHA | _（待填）_ |
-| 运行方式 | CLI（`python -m src.main --input ...`） |
-
-提交前自查：`python -m unittest discover -s tests` 应 `OK`；`examples/` 下的输出应由
-`python -m scripts.regen_examples` 生成而非手改。不提交密钥或真实业务数据——`data/seed.json` 全部为合成数据。

@@ -26,6 +26,8 @@
     "deduped": false,
     "reused": false
   },
+  "existing_schedule": null,
+  "duplicate_of": [],
   "notify": {
     "ok": true,
     "event": "confirm_needed",

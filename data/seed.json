@@ -116,6 +116,34 @@
           "author": "内容组-李四"
         },
         "synthetic": true
+      },
+      {
+        "id": "M08",
+        "metadata": {
+          "title": "厨房收纳小技巧",
+          "cover_url": "https://cdn.demo/cover/m08.jpg",
+          "file_url": "https://cdn.demo/video/m08.mp4",
+          "format": "mp4",
+          "duration_sec": 40,
+          "copyright": "original",
+          "tags": ["家居", "收纳"],
+          "author": "内容组-赵六"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M09",
+        "metadata": {
+          "title": "厨房收纳小技巧（重传）",
+          "cover_url": "https://cdn.demo/cover/m09.jpg",
+          "file_url": "https://cdn.demo/video/m08.mp4",
+          "format": "mp4",
+          "duration_sec": 40,
+          "copyright": "original",
+          "tags": ["家居", "收纳"],
+          "author": "内容组-赵六"
+        },
+        "synthetic": true
       }
     ],
     "material_review": [

@@ -1,6 +1,7 @@
 import unittest
 
 from src.rules import FIELD_LABELS, RULES_VERSION, audit
+from src.util import content_fingerprint
 
 BASE = {
     "title": "秋日限定甜品探店",
@@ -90,6 +91,36 @@ class RulesTests(unittest.TestCase):
     def test_field_labels_cover_all_required(self):
         for name in ("title", "cover_url", "file_url", "duration_sec"):
             self.assertIn(name, FIELD_LABELS)
+
+    # -- R009 内容重复 --------------------------------------------------
+    def test_r009_blocks_duplicate_content(self):
+        report = audit(BASE, duplicate_of=["M09"])
+        self.assertEqual(report.conclusion, "RISK")
+        self.assertIn("R009", codes(report))
+        self.assertEqual([r.level for r in report.risks if r.code == "R009"], ["HIGH"])
+        self.assertIn("M09", report.risk_reason)
+
+    def test_no_r009_without_duplicate(self):
+        report = audit(BASE)
+        self.assertNotIn("R009", codes(report))
+        self.assertEqual(report.conclusion, "PASSED")
+
+    def test_fingerprint_is_stable_for_same_file(self):
+        base = content_fingerprint(BASE)
+        noisy = {**BASE, "file_url": "  HTTPS://CDN.DEMO/video/m01.mp4  ", "title": "另一个标题"}
+        self.assertEqual(base, content_fingerprint(noisy))
+
+    def test_fingerprint_differs_on_duration_or_format(self):
+        self.assertNotEqual(content_fingerprint(BASE), content_fingerprint({**BASE, "duration_sec": 46}))
+        self.assertNotEqual(content_fingerprint(BASE), content_fingerprint({**BASE, "format": "mov"}))
+
+    def test_fingerprint_falls_back_to_title_without_file(self):
+        payload = {k: v for k, v in BASE.items() if k != "file_url"}
+        same = {**payload, "title": "  秋日限定甜品探店  "}
+        self.assertEqual(content_fingerprint(payload), content_fingerprint(same))
+        self.assertNotEqual(
+            content_fingerprint(payload), content_fingerprint({**payload, "title": "别的标题"})
+        )
 
 
 if __name__ == "__main__":

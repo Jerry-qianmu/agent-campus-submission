@@ -23,6 +23,7 @@ ERR_NOT_FOUND = "NOT_FOUND"
 ERR_INVALID_ARGUMENT = "INVALID_ARGUMENT"
 ERR_INVALID_STATE = "INVALID_STATE"
 ERR_SLOT_CONFLICT = "SLOT_CONFLICT"
+ERR_ALREADY_SCHEDULED = "ALREADY_SCHEDULED"
 ERR_SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
 ERR_RULES_UNAVAILABLE = "RULES_UNAVAILABLE"
 ERR_DB_UNAVAILABLE = "DB_UNAVAILABLE"
@@ -54,9 +55,12 @@ def ok_result(**data: Any) -> ToolResult:
     return ToolResult(ok=True, data=data)
 
 
-def fail_result(code: str, message: str, retryable: bool = False) -> ToolResult:
-    """失败结果：带错误码与是否可重试，调用方据此决定重试还是收尾。"""
-    return ToolResult(ok=False, code=code, message=message, retryable=retryable)
+def fail_result(code: str, message: str, retryable: bool = False, **data: Any) -> ToolResult:
+    """失败结果：带错误码与是否可重试，调用方据此决定重试还是收尾。
+
+    data 可携带结构化上下文（例如「已存在的草稿」），让上层能把它写进结果而不是只留一句错误。
+    """
+    return ToolResult(ok=False, data=data, code=code, message=message, retryable=retryable)
 
 
 # 内部沿用的简写，避免几十处调用点改名
@@ -121,11 +125,16 @@ def material_get(
 # 2. 规则审核
 # ---------------------------------------------------------------------------
 def audit_check(
-    db: JsonDatabase, material_id: str, metadata: dict[str, Any], faults: Faults
+    db: JsonDatabase,
+    material_id: str,
+    metadata: dict[str, Any],
+    faults: Faults,
+    duplicate_of: list[str] | None = None,
 ) -> ToolResult:
+    """跑规则并落库。duplicate_of 由调用方查库得到（内容指纹相同的其它素材）。"""
     if faults.rules_unavailable:
         return _fail(ERR_RULES_UNAVAILABLE, "审核规则不可用（已模拟）", retryable=False)
-    report: AuditReport = audit(metadata)
+    report: AuditReport = audit(metadata, duplicate_of=duplicate_of)
     try:
         with db.transaction() as session:
             Repository(session).upsert_review(
@@ -137,7 +146,9 @@ def audit_check(
             )
     except (LockTimeout, OSError) as exc:
         return _fail(ERR_DB_UNAVAILABLE, f"写入审核结果失败：{exc}", retryable=True)
-    return _ok(**report.as_dict())
+    payload = report.as_dict()
+    payload["duplicate_of"] = list(duplicate_of or [])
+    return _ok(**payload)
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +265,28 @@ def schedule_save_draft(
                     )
                     return _ok(draft=revived, deduped=False, reused=True)
                 return _ok(draft=existing, deduped=True, reused=False)
+
+            # 一个素材在同一时间只应有一条有效排期：换时段重排必须先取消原草稿，
+            # 否则同一素材会同时占住两个档位（uk_material_date 只挡住了「同素材同时段」）。
+            others = [
+                row
+                for row in repo.active_schedules_of(material_id)
+                if row["date"] != slot_iso
+            ]
+            if others:
+                existing_row = others[0]
+                return _fail(
+                    ERR_ALREADY_SCHEDULED,
+                    f"素材 {material_id} 已排期在 {existing_row['date']}"
+                    f"（草稿 #{existing_row['id']}，{existing_row['status']}），不能重复创建；"
+                    "如需改期请先取消原草稿",
+                    retryable=False,
+                    existing={
+                        "draft_id": existing_row["id"],
+                        "date": existing_row["date"],
+                        "status": existing_row["status"],
+                    },
+                )
 
             # 容量为 1：同一时段不能有两个素材。
             hour_end = to_iso(slot + timedelta(hours=1))

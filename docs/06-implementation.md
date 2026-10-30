@@ -15,7 +15,7 @@ CLI (src/main.py)  --log 写决策日志 JSONL
         ├── 模型客户端 src/clients.py OpenAI 兼容 / DeepSeek（重试、超时、错误码）
         ├── 动作注册 src/registry.py 5 个工具 + JSON Schema + 观测摘要
         ├── 工具实现 src/tools.py    读素材 / 审核 / 查时段 / 存草稿 / 提醒
-        │     ├── 规则判定 src/rules.py  R001–R008 纯函数
+        │     ├── 规则判定 src/rules.py  R001–R009 纯函数
         │     └── 数据访问 src/repository.py
         └── 存储     src/store.py    JSON 单文件库（语义对齐 MySQL）
 ```
@@ -244,7 +244,7 @@ with db.transaction() as session:      # 1) 抢锁 2) 读全库 3) 改内存
 | 模型动作 | 实现函数 | 关键行为 | 错误码 |
 | --- | --- | --- | --- |
 | `material_get` | `material_get` | 读元数据 + 最近审核结论 | `NOT_FOUND` / `SOURCE_UNAVAILABLE` |
-| `audit_check` | `audit_check` | 跑 R001–R008 并 upsert `material_review` | `RULES_UNAVAILABLE` |
+| `audit_check` | `audit_check` | 跑 R001–R009（含内容指纹去重）并 upsert `material_review` | `RULES_UNAVAILABLE` |
 | `slot_query` | `slot_query` | 天粒度，返回 `free/occupied/closed` | `DB_UNAVAILABLE` |
 | `slot_find_alternative` | `find_alternatives` | 先顺延、再提前，最多 2 个 | 同上 |
 | `schedule_save_draft` | `schedule_save_draft` | 幂等 + 容量校验 + 复活 CANCELLED | `SLOT_CONFLICT` / `INVALID_STATE` / `DB_UNAVAILABLE` / `DB_WRITE_REJECTED` |
@@ -275,10 +275,19 @@ flowchart LR
   B -->|否| C[material+date 命中?]
   C -->|CANCELLED| Z[复活为 DRAFT reused=true]
   C -->|其他| Y
-  C -->|无| D[同档位被别的素材占用?]
+  C -->|无| C2[该素材已有其它有效排期?]
+  C2 -->|是| X2[ALREADY_SCHEDULED<br/>带出原草稿，不改期]
+  C2 -->|否| D[同档位被别的素材占用?]
   D -->|是| W[SLOT_CONFLICT]
   D -->|否| V[插入 DRAFT]
 ```
+
+`ALREADY_SCHEDULED` 是针对「同一素材占两个档」的守卫：
+
+- 库里只有 `(material_id, date)` 唯一键，挡得住「同素材同时段」，挡不住「同素材换时段再排一次」；
+- 业务上一条素材只应有一条有效排期（DRAFT/CONFIRMED），所以保存前先查该素材的其它有效排期；
+- 命中时**不自动改期、不自动取消原草稿**，而是把原草稿带回去（`existing_schedule`），
+  由模型/用户决定是先取消再重排还是保留原样。
 
 ### 4.3 一个真实踩过的坑（已修复并加测试）
 
@@ -302,7 +311,7 @@ flowchart LR
 | 条件 | 结论 | 处置 |
 | --- | --- | --- |
 | 有必填字段缺失（R001/R002/R003/file_url） | `INCOMPLETE` | 补查 1 次；仍缺 → 阻断，列出字段 |
-| 有 HIGH 风险（R005 敏感词 / R008 格式） | `RISK` | 阻断，返回规则码与整改建议 |
+| 有 HIGH 风险（R005 敏感词 / R008 格式 / R009 内容重复） | `RISK` | 阻断，返回规则码与整改建议 |
 | 只有 MEDIUM/LOW（R004 版权、R006 标题长、R007 无标签） | `PASSED` | 继续，但写入待确认项 |
 | 无 | `PASSED` | 直接排期 |
 
@@ -346,6 +355,8 @@ flowchart LR
 | `published` | **恒为 `false`** | 结构性保证：没有任何代码路径写 `PUBLISHED` 或 `release_date` |
 | `draft` | `{saved, draft_id, status, deduped, reused}` | `saved=false` 时没有其它字段 |
 | `pending_confirmations` | `list[str]` | 人话，可直接展示给用户 |
+| `existing_schedule` | `{draft_id, date, status}` \| null | 命中 `ALREADY_SCHEDULED` 时带出原草稿，便于提示改哪条 |
+| `duplicate_of` | `list[str]` | 内容指纹相同的其它素材 ID（R009） |
 | `steps` / `tool_calls` / `max_steps` | 整数 | 决策步数、实际工具调用数、上限 |
 | `decisions` | `list[dict]` | 每步的动作、参数、观测摘要、后续动作、决策依据 |
 | `trace` | `list[str]` | `prepare / agent / act:<tool> / finalize` |
@@ -386,12 +397,12 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，128 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，136 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
 | 存储 | `tests/test_store.py` | 唯一键、NULL 语义、自增、回滚不落盘、原子写、8 线程并发、锁 PermissionError 重试 |
-| 规则 | `tests/test_rules.py` | R001–R008 逐条、缺失优先于风险、metadata 为 None |
+| 规则 | `tests/test_rules.py` | R001–R009 逐条、缺失优先于风险、metadata 为 None、指纹稳定性 |
 | 意图 | `tests/test_llm.py` | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文解析 |
 | 流程 | `tests/test_workflow.py` | 六类验收 + 补查恢复 + 提醒降级 + 取消复活 + 限步未完成 + 决策日志字段 + 假模型驱动循环 |
 | CLI | `tests/test_cli.py` | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
@@ -434,7 +445,7 @@ src/server.py  (ThreadingHTTPServer)
 | `GET /api/bootstrap` | 素材库、已有排期、默认日期、provider 状态 | 界面首屏 |
 | `GET /api/slots?date=` | 当天 `free/occupied/closed` | 时段网格 |
 | `GET /api/drafts` | 全部排期（含 CANCELLED）+ 状态计数 + 冲突扫描 | 草稿箱标签页 |
-| `GET /api/materials/{id}` | 单素材：元数据、审核结论、自己的排期、与谁冲突 | 素材详情标签页 |
+| `GET /api/materials/{id}` | 单素材：元数据、审核结论、自己的排期、与谁冲突、内容指纹与重复素材 | 素材详情标签页 |
 | `POST /api/run` | 跑一次 ReAct | 返回与 CLI 相同的 JSON（含 `decisions`） |
 | `POST /api/confirm` | `schedule_confirm`，DRAFT → CONFIRMED | 界面「确认」按钮 |
 | `POST /api/cancel` | `schedule_cancel`，DRAFT → CANCELLED 并释放时段 | 界面「取消」按钮 |

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 RULES_VERSION = "r2026.11.1"
 
@@ -106,8 +106,14 @@ def _duration(metadata: Mapping[str, Any]) -> tuple[str, float | None]:
     return "", float(value)
 
 
-def audit(metadata: Mapping[str, Any] | None) -> AuditReport:
-    """对一份素材元数据做完整性校验与规则检查。"""
+def audit(
+    metadata: Mapping[str, Any] | None,
+    duplicate_of: Sequence[str] | None = None,
+) -> AuditReport:
+    """对一份素材元数据做完整性校验与规则检查。
+
+    duplicate_of：内容指纹相同的其它素材 ID（由工具层查库后传入，规则本身保持纯函数）。
+    """
     md: Mapping[str, Any] = metadata if isinstance(metadata, Mapping) else {}
     missing: list[str] = []
     risks: list[Risk] = []
@@ -166,6 +172,19 @@ def audit(metadata: Mapping[str, Any] | None) -> AuditReport:
     # R007 标签为空
     if not tag_text.strip():
         risks.append(Risk("R007", "LOW", "tags", "素材没有标签", "补充标签便于分发与检索"))
+
+    # R009 内容重复（同一份素材换 ID 重传）：指纹相同即视为重复，发布前必须拦下
+    duplicates = [str(item) for item in (duplicate_of or []) if str(item)]
+    if duplicates:
+        risks.append(
+            Risk(
+                "R009",
+                "HIGH",
+                "file_url",
+                f"与素材 {'、'.join(duplicates)} 内容重复（同一文件指纹）",
+                "确认是否重复上传；合并或替换后再排期",
+            )
+        )
 
     if missing:
         conclusion = "INCOMPLETE"

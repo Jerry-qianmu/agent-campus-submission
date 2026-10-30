@@ -62,9 +62,13 @@ test_structured_fields_win (test_llm.MockLLMTests.test_structured_fields_win) ..
 test_time_only_falls_back_to_now_date (test_llm.MockLLMTests.test_time_only_falls_back_to_now_date) ... ok
 test_clean_material_passes (test_rules.RulesTests.test_clean_material_passes) ... ok
 test_field_labels_cover_all_required (test_rules.RulesTests.test_field_labels_cover_all_required) ... ok
+test_fingerprint_differs_on_duration_or_format (test_rules.RulesTests.test_fingerprint_differs_on_duration_or_format) ... ok
+test_fingerprint_falls_back_to_title_without_file (test_rules.RulesTests.test_fingerprint_falls_back_to_title_without_file) ... ok
+test_fingerprint_is_stable_for_same_file (test_rules.RulesTests.test_fingerprint_is_stable_for_same_file) ... ok
 test_metadata_none_is_incomplete (test_rules.RulesTests.test_metadata_none_is_incomplete) ... ok
 test_missing_precedes_risk (test_rules.RulesTests.test_missing_precedes_risk)
 同时缺字段和违规时，先判信息缺失：让用户补完再谈风险。 ... ok
+test_no_r009_without_duplicate (test_rules.RulesTests.test_no_r009_without_duplicate) ... ok
 test_r001_missing_title (test_rules.RulesTests.test_r001_missing_title) ... ok
 test_r002_missing_cover (test_rules.RulesTests.test_r002_missing_cover) ... ok
 test_r003_invalid_duration (test_rules.RulesTests.test_r003_invalid_duration) ... ok
@@ -74,6 +78,7 @@ test_r005_sensitive_words_block (test_rules.RulesTests.test_r005_sensitive_words
 test_r006_long_title_is_low (test_rules.RulesTests.test_r006_long_title_is_low) ... ok
 test_r007_empty_tags (test_rules.RulesTests.test_r007_empty_tags) ... ok
 test_r008_bad_format_blocks (test_rules.RulesTests.test_r008_bad_format_blocks) ... ok
+test_r009_blocks_duplicate_content (test_rules.RulesTests.test_r009_blocks_duplicate_content) ... ok
 test_bootstrap_lists_materials_and_date (test_server.AppTests.test_bootstrap_lists_materials_and_date) ... ok
 test_cancel_frees_the_slot (test_server.AppTests.test_cancel_frees_the_slot) ... ok
 test_cannot_cancel_confirmed_draft (test_server.AppTests.test_cannot_cancel_confirmed_draft) ... ok
@@ -83,6 +88,8 @@ test_conflict_scan_detects_duplicate_slot (test_server.AppTests.test_conflict_sc
 test_drafts_lists_all_rows (test_server.AppTests.test_drafts_lists_all_rows) ... ok
 test_hard_constraint_does_not_save (test_server.AppTests.test_hard_constraint_does_not_save) ... ok
 test_invalid_provider_rejected (test_server.AppTests.test_invalid_provider_rejected) ... ok
+test_material_detail_exposes_fingerprint_and_duplicates (test_server.AppTests.test_material_detail_exposes_fingerprint_and_duplicates)
+M08/M09 是同一份文件：两者互相标为重复，且指纹一致。 ... ok
 test_material_detail_reports_seed_schedule (test_server.AppTests.test_material_detail_reports_seed_schedule) ... ok
 test_material_detail_without_schedule (test_server.AppTests.test_material_detail_without_schedule) ... ok
 test_missing_hour_means_no_slot (test_server.AppTests.test_missing_hour_means_no_slot) ... ok
@@ -117,6 +124,8 @@ test_action_changes_after_observing_conflict (test_workflow.WorkflowTests.test_a
 同一素材、同一时段冲突：软性要求会改档并存草稿，硬性要求则直接收手。 ... ok
 test_cancelled_slot_is_revived_not_duplicated (test_workflow.WorkflowTests.test_cancelled_slot_is_revived_not_duplicated) ... ok
 test_decision_log_has_required_fields (test_workflow.WorkflowTests.test_decision_log_has_required_fields) ... ok
+test_duplicate_material_content_blocks (test_workflow.WorkflowTests.test_duplicate_material_content_blocks)
+M08 与 M09 是同一文件（指纹相同）：换 ID 重传也要被 R009 拦下。 ... ok
 test_duplicate_submission_creates_one_draft (test_workflow.WorkflowTests.test_duplicate_submission_creates_one_draft) ... ok
 test_every_status_is_known (test_workflow.WorkflowTests.test_every_status_is_known) ... ok
 test_finish_without_draft_is_downgraded_to_blocked (test_workflow.WorkflowTests.test_finish_without_draft_is_downgraded_to_blocked)
@@ -137,6 +146,8 @@ test_other_material_occupies_slot (test_workflow.WorkflowTests.test_other_materi
 M00 占 20:00 时，M02 要 20:00 应顺延到 21:00。 ... ok
 test_repeat_runs_do_not_publish_anything (test_workflow.WorkflowTests.test_repeat_runs_do_not_publish_anything) ... ok
 test_rule_risk_blocks (test_workflow.WorkflowTests.test_rule_risk_blocks) ... ok
+test_same_material_cannot_hold_two_slots (test_workflow.WorkflowTests.test_same_material_cannot_hold_two_slots)
+同一素材已经有一条有效排期时，换到另一个时段应被拒绝，而不是多占一个档。 ... ok
 test_save_failure_is_reported_loudly (test_workflow.WorkflowTests.test_save_failure_is_reported_loudly) ... ok
 test_slot_conflict_suggests_alternative (test_workflow.WorkflowTests.test_slot_conflict_suggests_alternative)
 参考实例：M01 要 18:00，被 M00 占用，19:00 可用。 ... ok
@@ -146,6 +157,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 128 tests in 11.769s
+Ran 136 tests in 12.049s
 
 OK

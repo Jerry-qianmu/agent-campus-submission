@@ -231,6 +231,7 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
 
     draft: dict[str, Any] = {"saved": False}
     suggested_slot = finish_payload.get("suggested_slot")
+    existing_schedule: dict[str, Any] | None = None
     if save_observation and save_observation["ok"]:
         saved = save_observation["data"]
         draft = {
@@ -241,6 +242,9 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
             "reused": bool(saved.get("reused")),
         }
         suggested_slot = suggested_slot or saved["draft"]["date"]
+    elif save_observation and save_observation.get("code") == "ALREADY_SCHEDULED":
+        # 素材已有排期：把那条已有草稿带出来，前端才能告诉用户「改哪条」
+        existing_schedule = (save_observation.get("data") or {}).get("existing")
 
     if status in ("completed", "needs_confirmation") and not draft.get("saved"):
         # 模型可能直接 finish 而不落草稿。不能声称"已保存/待确认"，按未完成处理。
@@ -273,6 +277,8 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
         "alternatives": alternative.get("alternatives") or [],
         "pending_confirmations": pending,
         "draft": draft,
+        "existing_schedule": existing_schedule,
+        "duplicate_of": audit.get("duplicate_of") or [],
         "notify": _notify(state, deps, status, draft, pending, suggested_slot, material_id),
         "published": False,
         "steps": len(decisions),

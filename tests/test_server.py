@@ -23,7 +23,7 @@ class AppTests(unittest.TestCase):
 
     def test_bootstrap_lists_materials_and_date(self):
         data = self.app.bootstrap()
-        self.assertEqual(len(data["materials"]), 8)
+        self.assertEqual(len(data["materials"]), 10)
         self.assertEqual(data["suggested_date"], "2026-11-05")
         self.assertEqual(data["provider"], "mock")
         self.assertEqual(data["max_steps"], 10)
@@ -109,6 +109,18 @@ class AppTests(unittest.TestCase):
         self.assertEqual(data["schedules"][0]["date"], "2026-11-05T18:00:00+08:00")
         self.assertEqual(data["schedules"][0]["status"], "DRAFT")
         self.assertEqual(data["conflict_count"], 0)
+
+    def test_material_detail_exposes_fingerprint_and_duplicates(self):
+        """M08/M09 是同一份文件：两者互相标为重复，且指纹一致。"""
+        data = self.app.material_detail("M08")
+        self.assertEqual(data["duplicate_of"], ["M09"])
+        self.assertEqual(len(data["content_hash"]), 64)
+        mirror = self.app.material_detail("M09")
+        self.assertEqual(mirror["duplicate_of"], ["M08"])
+        self.assertEqual(mirror["content_hash"], data["content_hash"])
+
+        clean = self.app.material_detail("M01")
+        self.assertEqual(clean["duplicate_of"], [])
 
     def test_conflict_scan_detects_duplicate_slot(self):
         """容量是应用层校验，库里没有跨素材唯一键；直接插两条应被扫描出来。"""
@@ -209,7 +221,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_confirmation")
 
         _, body = self._get("/api/bootstrap")
-        self.assertEqual(len(json.loads(body)["materials"]), 8)
+        self.assertEqual(len(json.loads(body)["materials"]), 10)
 
     def test_unknown_route_returns_404(self):
         with self.assertRaises(HTTPError) as caught:
