@@ -380,7 +380,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 │   ├── 01-requirements.md         # 用户、范围、验收映射
 │   ├── 02-solution.md             # ReAct 流程、模块、取舍
 │   ├── 03-evaluation.md           # 用例和实际测试记录
-│   ├── 04-ai-usage.md             # AI 使用及验证
+│   ├── 04-ai-usage.md             # AI 分工、我的判断、验收证据
 │   ├── 05-retrospective.md        # 用时、不足、未完成部分
 │   ├── 06-implementation.md       # 实现细节（循环/动作/数据/错误码/测试）
 │   └── images/                    # 界面截图
@@ -471,7 +471,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | 执行路径记录 | [run-records](examples/run-records.md) |
 | MySQL 设计 | [schema.sql](sql/schema.sql) |
 | 测试、预期、结果 | [评估](docs/03-evaluation.md) |
-| AI 辅助边界 | [AI 使用](docs/04-ai-usage.md) |
+| AI 分工与我的判断 | [AI 使用](docs/04-ai-usage.md) |
 | 用时与未完成部分 | [复盘](docs/05-retrospective.md) |
 
 ## 边界
