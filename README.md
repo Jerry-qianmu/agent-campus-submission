@@ -32,7 +32,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 96 个用例
+python -m unittest discover -s tests -v                        # 107 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -112,6 +112,9 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | `DEEPSEEK_THINKING` | `disabled` | `enabled` 时自动去掉 `temperature` |
 | `DEEPSEEK_REASONING_EFFORT` | 空 | `none/low/high/max`，设置后覆盖 THINKING |
 | `DEEPSEEK_TIMEOUT` / `DEEPSEEK_MAX_RETRIES` | `60` / `2` | 超时秒数与重试次数 |
+
+配置只从 `.env` 读：程序启动时加载并写回环境，代码里统一用 `os.getenv("KEY")`；
+`.env` 覆盖同名进程变量，所以**改文件就生效**，不会被 shell 里残留的旧值压掉。
 
 实现要点（细节见 [docs/06 §2.7](docs/06-implementation.md)）：
 

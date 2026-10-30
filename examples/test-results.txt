@@ -31,6 +31,20 @@ test_honours_retry_after_header (test_clients.RetryTests.test_honours_retry_afte
 test_network_error_maps_to_network (test_clients.RetryTests.test_network_error_maps_to_network) ... ok
 test_retries_429_then_succeeds (test_clients.RetryTests.test_retries_429_then_succeeds) ... ok
 test_timeout_is_retried_then_raises (test_clients.RetryTests.test_timeout_is_retried_then_raises) ... ok
+test_describe_sources_mentions_existence (test_env.LoadTests.test_describe_sources_mentions_existence) ... ok
+test_dotenv_wins_by_default (test_env.LoadTests.test_dotenv_wins_by_default)
+默认 .env 覆盖同名进程变量：改文件就生效，不被 shell 残留值压掉。 ... ok
+test_first_candidate_wins (test_env.LoadTests.test_first_candidate_wins)
+一次加载多个候选文件时，先出现的生效（仓库根 .env 优先于 cwd .env）。 ... ok
+test_missing_file_is_noop (test_env.LoadTests.test_missing_file_is_noop) ... ok
+test_override_false_keeps_existing (test_env.LoadTests.test_override_false_keeps_existing) ... ok
+test_writes_into_environment (test_env.LoadTests.test_writes_into_environment) ... ok
+test_bom_and_crlf (test_env.ParseTests.test_bom_and_crlf) ... ok
+test_empty_text (test_env.ParseTests.test_empty_text) ... ok
+test_hash_inside_value_is_kept (test_env.ParseTests.test_hash_inside_value_is_kept)
+只有"空白+#"才是注释，a#b 这种值不能被截断。 ... ok
+test_parses_all_supported_forms (test_env.ParseTests.test_parses_all_supported_forms) ... ok
+test_skips_invalid_lines (test_env.ParseTests.test_skips_invalid_lines) ... ok
 test_code_fence_is_stripped (test_llm.HttpLLMTests.test_code_fence_is_stripped) ... ok
 test_malformed_response_raises_chat_error (test_llm.HttpLLMTests.test_malformed_response_raises_chat_error) ... ok
 test_non_json_content_raises_invalid_input (test_llm.HttpLLMTests.test_non_json_content_raises_invalid_input) ... ok
@@ -110,6 +124,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 96 tests in 10.810s
+Ran 107 tests in 10.940s
 
 OK

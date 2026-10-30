@@ -428,7 +428,7 @@ class LLMPolicy:
 
 def get_policy(provider: str | None = None, model: str | None = None) -> Policy:
     """按 provider 选择策略：mock 走规则，deepseek/http 走真实模型。"""
-    resolved = (provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    resolved = (provider or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
     if resolved in ("mock", "offline"):
         return MockPolicy()
     client = build_client(resolved, model)

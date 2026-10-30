@@ -1,7 +1,11 @@
-"""极简 .env 加载器（不引第三方依赖）。
+"""极简 .env 加载器（不引第三方依赖）。配置的唯一来源就是 .env。
 
 为什么需要它
-    之前只读 os.environ，用户在 .env 里配好 key 却报"没有 key"。这不是配置错，是代码没读。
+    之前只读进程环境变量，用户在 .env 里配好 key 却报"没有 key"。这不是配置错，是代码没读。
+
+加载方式
+    解析后写回 os.environ，因此全项目的配置读取统一用 os.getenv("KEY")。
+    读代码时只需要知道一事：**配置以 .env 为准**。
 
 支持的写法
     KEY=value
@@ -16,8 +20,9 @@
     复杂语法只会带来"到底解析成什么"的歧义。
 
 优先级
-    已存在的环境变量优先，不会被 .env 覆盖（与常见 dotenv 实现一致），
-    这样 CI/生产环境注入的变量永远压过本地文件。
+    .env 覆盖同名进程环境变量（override=True 为默认）。
+    这样"改 .env 就生效"，不会出现 shell 里残留的旧 key 把文件配置压掉的情况。
+    需要让外部注入优先时，显式调用 load_dotenv(override=False)。
 """
 
 from __future__ import annotations
@@ -85,10 +90,11 @@ def dotenv_candidates() -> list[Path]:
     return seen
 
 
-def load_dotenv(path: Path | str | None = None, override: bool = False) -> dict[str, str]:
+def load_dotenv(path: Path | str | None = None, override: bool = True) -> dict[str, str]:
     """加载 .env 到 os.environ，返回本次真正写入的键值（便于日志与排错）。
 
     path 为空时按 dotenv_candidates() 顺序加载，先到先得。
+    override=True（默认）表示 .env 优先于同名进程环境变量。
     """
     paths = [Path(path)] if path is not None else dotenv_candidates()
     loaded: dict[str, str] = {}
@@ -100,7 +106,7 @@ def load_dotenv(path: Path | str | None = None, override: bool = False) -> dict[
         except OSError:
             continue
         for key, value in parse_env_text(text).items():
-            if not override and key in os.environ and os.environ[key] != "":
+            if not override and os.getenv(key) not in (None, ""):
                 continue
             if key in loaded:
                 continue

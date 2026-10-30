@@ -154,6 +154,10 @@ flowchart TD
 记录见 [examples/run-records.md](../examples/run-records.md#真实模型记录deepseek-deepseek-flash)、
 [docs/03](03-evaluation.md)。手动复跑：`python -m scripts.smoke_deepseek --full`。
 
+配置来源只有一个：仓库根的 `.env`。`src/env.py` 启动时解析并写回环境，全项目用 `os.getenv("KEY")` 读；
+`.env` 覆盖同名进程变量（`load_dotenv` 默认 `override=True`），因此"改文件就生效"，
+不会出现 shell 里残留的旧 key 压过文件配置。命令行可加 `--env-file` 指向别的文件。
+
 联调打出的两条真实约束（已修复，离线 mock 测不到）：
 
 | 现象 | 根因 | 处理 |
@@ -382,7 +386,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，96 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，107 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -410,7 +414,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 96 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 107 个测试。
 
 ---
 

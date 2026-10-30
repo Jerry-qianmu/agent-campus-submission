@@ -1,7 +1,7 @@
 # 测试与评估
 
 本页记录离线流程验证 + 一次真实模型（DeepSeek）联调。
-离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 96 tests … OK`。
+离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 107 tests … OK`。
 
 ## 必须验收的六类
 
@@ -61,7 +61,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `400 Invalid 'tools[0].function.name'` | 工具名带点号，不满足 `^[a-zA-Z0-9_-]+$` | 全部改下划线 | `test_clients` + 联调复跑 |
 | `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就收尾 | prompt 规则 7 + `finalize` 降级为 `blocked` | `test_finish_without_draft_is_downgraded_to_blocked` |
 
-## 单元/集成测试分布（共 96）
+## 单元/集成测试分布（共 107）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
@@ -70,6 +70,8 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `tests/test_llm.py` | 15 | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文与代码围栏剥离 |
 | `tests/test_clients.py` | 20 | DeepSeek 报文、tool_calls/usage 解析、429 重试与 Retry-After、400/401/402 不重试、超时/网络错误、思考模式参数、env 工厂 |
 | `tests/test_workflow.py` | 28 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
+| `tests/test_env.py` | 11 | `.env` ?????/??/export/BOM/CRLF??`.env` ?????????????? |
+| `tests/test_env.py` | 11 | `.env` 解析（注释/引号/export/BOM/CRLF）、`.env` 覆盖进程变量、缺失文件无操作 |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 ## 可自动化的硬断言

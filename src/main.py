@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # .env 必须在构造任何客户端之前加载，否则 os.environ 里没有 key
     loaded = load_dotenv(args.env_file)
-    provider = (args.provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    provider = (args.provider or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
     if loaded and provider != "mock":
         # 只打键名不打值；mock 模式不需要打扰
         print(f"[env] 已载入 {len(loaded)} 个变量：{', '.join(sorted(loaded))}", file=sys.stderr)

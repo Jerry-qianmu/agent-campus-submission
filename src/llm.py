@@ -239,7 +239,7 @@ def _strip_code_fence(text: str) -> str:
 
 def get_llm(provider: str | None = None, model: str | None = None) -> LLMClient:
     """按 provider 选择意图解析实现；mock 时用规则解析，不产生任何网络请求。"""
-    resolved = (provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    resolved = (provider or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
     if resolved in ("mock", "offline"):
         return MockLLM()
     client = build_client(resolved, model)

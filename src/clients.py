@@ -369,7 +369,7 @@ class DeepSeekClient(OpenAICompatibleClient):
 
 
 def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
+    raw = os.getenv(name)
     if not raw:
         return default
     try:
@@ -380,13 +380,13 @@ def _env_float(name: str, default: float) -> float:
 
 def build_client(provider: str | None = None, model: str | None = None) -> ChatClient | None:
     """按 provider 造客户端；mock 返回 None（调用方用 MockPolicy / MockLLM）。"""
-    resolved = (provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    resolved = (provider or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
 
     if resolved in ("mock", "offline"):
         return None
 
     if resolved == "deepseek":
-        api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("LLM_API_KEY")
+        api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY")
         if not api_key:
             raise InvalidInput(
                 "LLM_PROVIDER=deepseek 需要 DEEPSEEK_API_KEY。已查找："
@@ -395,23 +395,23 @@ def build_client(provider: str | None = None, model: str | None = None) -> ChatC
             )
         return DeepSeekClient(
             api_key=api_key,
-            base_url=os.environ.get("DEEPSEEK_BASE_URL") or None,
-            model=model or os.environ.get("DEEPSEEK_MODEL") or None,
-            thinking=(os.environ.get("DEEPSEEK_THINKING") or "disabled").strip().lower(),
-            reasoning_effort=os.environ.get("DEEPSEEK_REASONING_EFFORT") or None,
+            base_url=os.getenv("DEEPSEEK_BASE_URL") or None,
+            model=model or os.getenv("DEEPSEEK_MODEL") or None,
+            thinking=(os.getenv("DEEPSEEK_THINKING") or "disabled").strip().lower(),
+            reasoning_effort=os.getenv("DEEPSEEK_REASONING_EFFORT") or None,
             timeout=_env_float("DEEPSEEK_TIMEOUT", 60.0),
             max_retries=int(_env_float("DEEPSEEK_MAX_RETRIES", 2)),
         )
 
     if resolved in ("http", "openai"):
-        api_key = os.environ.get("LLM_API_KEY")
-        base_url = os.environ.get("LLM_BASE_URL")
+        api_key = os.getenv("LLM_API_KEY")
+        base_url = os.getenv("LLM_BASE_URL")
         if not (api_key and base_url):
             raise InvalidInput("LLM_PROVIDER=http 需要同时设置 LLM_BASE_URL 与 LLM_API_KEY")
         return OpenAICompatibleClient(
             api_key=api_key,
             base_url=base_url,
-            model=model or os.environ.get("LLM_MODEL"),
+            model=model or os.getenv("LLM_MODEL"),
         )
 
     raise InvalidInput(f"未知的 LLM_PROVIDER：{resolved}（可选 mock / deepseek / http）")
