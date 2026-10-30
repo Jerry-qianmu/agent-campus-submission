@@ -1,6 +1,7 @@
 # 实现细节
 
 面向评审：本文说明这套 mock 版「素材审核与发布排期 Agent」是怎么搭的、为什么这么搭、以及哪里还没做完。
+结构、取舍与边界由我确定，代码按此实现（分工见 [AI 使用](04-ai-usage.md)）。
 配套文件：[需求](01-requirements.md) · [方案](02-solution.md) · [评估](03-evaluation.md) · [MySQL 设计稿](../sql/schema.sql) · [题目原文](../题目.md)
 
 ---
