@@ -16,24 +16,34 @@ python -m src.server            # 自动打开 http://127.0.0.1:8765
 python -m src.server --port 9000 --provider deepseek
 ```
 
-左侧选素材、选时段（占用时段也能选，用来看 Agent 怎么处理冲突）、选硬/软约束；右侧出结果与完整决策过程，
-草稿可一键确认（`DRAFT → CONFIRMED`，仍是草稿、不发布）。模型可在 `Mock / DeepSeek` 之间切换。
+左侧选素材、选时段（占用时段也能选，用来看 Agent 怎么处理冲突）、选硬/软约束；右侧三个标签页：
+**运行结果**（决策过程）、**草稿箱**（所有排期 + 冲突扫描）、**素材详情**（单个素材的审核态、排期、与谁冲突）。
 
 ![运行结果](docs/images/ui-result.png)
 
 <sub>截图是真实跑 `M01 → 18:00 软性` 的结果：18:00 被 M00 占用，草稿落到 19:00 并标待确认，`published=false`。</sub>
 
+**草稿箱**：DRAFT / CONFIRMED / CANCELLED 全量列出，可直接确认或取消（取消会释放时段），并做一次全局冲突扫描。
+
+![草稿箱](docs/images/ui-drafts.png)
+
+**素材详情**：点左侧任意素材即可看它的元数据、审核结论、所有排期，以及「这条排期有没有和别的素材撞在同一时段」。
+
+![素材详情](docs/images/ui-material.png)
+
 | 能力 | 说明 |
 | --- | --- |
-| 素材库 | 8 条合成素材，显示审核态（PASSED / PENDING / RISK），点击选中 |
+| 素材库 | 8 条合成素材，显示审核态（PASSED / PENDING / RISK）；点标题进详情 |
 | 时段网格 | 08:00–22:00，free / occupied / closed 三态；占用档可选，用来演示冲突 |
 | 参数 | 硬/软约束、补充说明、故障注入（素材不可用 / 保存失败 / 提醒失败）、步数上限 |
-| 结果 | 状态徽章、草稿 ID、待确认项、规则命中、token 用量 |
-| 决策过程 | 每步动作、参数、观测摘要、依据、下一步；可展开完整 JSON |
-| 确认草稿 | `POST /api/confirm`，把 DRAFT 置为 CONFIRMED（`schedule_confirm` 终于接上了） |
+| 运行结果 | 状态徽章、草稿 ID、待确认项、规则命中、token 用量、完整决策时间线 |
+| 草稿箱 | 全部排期 + 状态计数 + 冲突扫描；DRAFT 可确认/取消 |
+| 素材详情 | 元数据、审核结论与风险原因、该素材的排期、是否与别的素材冲突 |
+| 一键操作 | `POST /api/confirm` / `POST /api/cancel`（仍是草稿，不发布） |
 | 重置数据 | 一键把运行库恢复到种子状态 |
 
-接口：`GET /api/bootstrap`、`GET /api/slots?date=`、`POST /api/run`、`POST /api/confirm`、`POST /api/reset`。
+接口：`GET /api/bootstrap`、`GET /api/slots?date=`、`GET /api/drafts`、`GET /api/materials/{id}`、
+`POST /api/run`、`POST /api/confirm`、`POST /api/cancel`、`POST /api/reset`。
 只监听 `127.0.0.1`，无鉴权——本地面向评审的演示，不要暴露到公网。
 
 ## 快速运行
@@ -60,7 +70,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 120 个用例
+python -m unittest discover -s tests -v                        # 128 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；

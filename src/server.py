@@ -38,7 +38,7 @@ from .errors import AgentError, InvalidInput
 from .graph import MAX_STEPS_DEFAULT, run_request
 from .repository import Repository
 from .store import JsonDatabase
-from .tools import schedule_confirm, slot_query
+from .tools import schedule_cancel, schedule_confirm, slot_query
 from .util import TZ, parse_datetime, to_iso
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +47,7 @@ SEED = ROOT / "data" / "seed.json"
 
 ALLOWED_PROVIDERS = ("mock", "deepseek")
 ALLOWED_CONSTRAINTS = ("hard", "soft")
+ACTIVE_STATUS = ("DRAFT", "CONFIRMED")
 ALLOWED_FAULTS = {
     "none": None,
     "material_lookup": {"material_lookup": True},
@@ -128,6 +129,113 @@ class App:
             "occupied": result.data["occupied"],
         }
 
+    def drafts(self) -> dict[str, Any]:
+        """草稿箱：所有排期行（含已取消）+ 全局冲突扫描。"""
+        with self.db.transaction() as session:
+            schedules = [dict(row) for row in session.select("publish_schedule")]
+            titles = {
+                row["id"]: (row.get("metadata") or {}).get("title") or row["id"]
+                for row in session.select("materials")
+            }
+
+        owners = self._slot_owners(schedules)
+        conflicts = self._conflicts(owners)
+        items = []
+        for row in sorted(schedules, key=lambda item: (item["date"], item["id"])):
+            others = sorted(set(owners.get(row["date"], [])) - {row["material_id"]})
+            items.append(
+                {
+                    "id": row["id"],
+                    "material_id": row["material_id"],
+                    "title": titles.get(row["material_id"], row["material_id"]),
+                    "date": row["date"],
+                    "status": row["status"],
+                    "confirm_time": row.get("confirm_time"),
+                    "conflict_with": others if row["status"] in ACTIVE_STATUS else [],
+                }
+            )
+
+        counts = {"DRAFT": 0, "CONFIRMED": 0, "CANCELLED": 0, "PUBLISHED": 0}
+        for row in schedules:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        return {
+            "drafts": items,
+            "counts": counts,
+            "active": counts["DRAFT"] + counts["CONFIRMED"],
+            "conflicts": conflicts,
+            "published_total": counts["PUBLISHED"],
+        }
+
+    def material_detail(self, material_id: str) -> dict[str, Any]:
+        """单素材视角：元数据 + 审核 + 自己所有排期 + 是否与他人冲突。"""
+        mid = str(material_id or "").strip().upper()
+        with self.db.transaction() as session:
+            material = session.select_one("materials", id=mid)
+            if material is None:
+                raise InvalidInput(f"素材 {mid} 不存在")
+            review = session.select_one("material_review", material_id=mid)
+            schedules = [dict(row) for row in session.select("publish_schedule")]
+            titles = {
+                row["id"]: (row.get("metadata") or {}).get("title") or row["id"]
+                for row in session.select("materials")
+            }
+
+        owners = self._slot_owners(schedules)
+        conflicts = self._conflicts(owners)
+        mine = []
+        for row in sorted(
+            (item for item in schedules if item["material_id"] == mid),
+            key=lambda item: item["date"],
+        ):
+            others = sorted(set(owners.get(row["date"], [])) - {mid})
+            mine.append(
+                {
+                    "id": row["id"],
+                    "date": row["date"],
+                    "status": row["status"],
+                    "confirm_time": row.get("confirm_time"),
+                    "conflict_with": others if row["status"] in ACTIVE_STATUS else [],
+                    "owner_title": titles.get(mid, mid),
+                }
+            )
+
+        metadata = material.get("metadata") or {}
+        return {
+            "id": mid,
+            "title": metadata.get("title") or mid,
+            "metadata": metadata,
+            "review": {
+                "status": (review or {}).get("status") or "PENDING",
+                "risk_reason": (review or {}).get("risk_reason"),
+                "rules_version": (review or {}).get("rules_version"),
+                "release_date": (review or {}).get("release_date"),
+                "updated_at": (review or {}).get("update_time"),
+            },
+            "schedules": mine,
+            "has_schedule": bool(mine),
+            "conflict_count": sum(len(item["conflict_with"]) for item in mine),
+            "global_conflicts": conflicts,
+        }
+
+    # -- 冲突扫描 ----------------------------------------------------------
+    @staticmethod
+    def _slot_owners(schedules: list[dict[str, Any]]) -> dict[str, list[str]]:
+        """时段 -> 占用它的素材（只算 DRAFT/CONFIRMED）。"""
+        owners: dict[str, list[str]] = {}
+        for row in schedules:
+            if row["status"] in ACTIVE_STATUS:
+                owners.setdefault(row["date"], []).append(row["material_id"])
+        return owners
+
+    @staticmethod
+    def _conflicts(owners: dict[str, list[str]]) -> dict[str, list[str]]:
+        """同一时段被多个素材占用才是真冲突；容量是应用层校验，库里没有跨素材唯一键。"""
+        return {
+            slot: sorted(set(materials))
+            for slot, materials in owners.items()
+            if len(set(materials)) > 1
+        }
+
     # -- 写 ----------------------------------------------------------------
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         provider = self._provider(payload.get("provider"))
@@ -189,6 +297,12 @@ class App:
             raise InvalidInput(result.message or "确认失败")
         return {"ok": True, "draft": result.data["draft"]}
 
+    def cancel(self, draft_id: int) -> dict[str, Any]:
+        result = schedule_cancel(self.db, int(draft_id))
+        if not result.ok:
+            raise InvalidInput(result.message or "取消失败")
+        return {"ok": True, "draft": result.data["draft"]}
+
     def reset(self) -> dict[str, Any]:
         for suffix in ("", ".lock", ".tmp"):
             path = Path(str(self.db.path) + suffix)
@@ -238,6 +352,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not date:
                     raise InvalidInput("缺少 date 参数")
                 return self._send(200, self.app.slots(date))
+            if path == "/api/drafts":
+                return self._send(200, self.app.drafts())
+            if path.startswith("/api/materials/"):
+                material_id = path.removeprefix("/api/materials/").strip()
+                if not material_id:
+                    raise InvalidInput("缺少素材 ID")
+                return self._send(200, self.app.material_detail(material_id))
             return self._send(404, {"error": "not found"})
         except (InvalidInput, AgentError) as exc:
             self._send(400, {"error": str(exc)})
@@ -255,6 +376,11 @@ class Handler(BaseHTTPRequestHandler):
                 if draft_id in (None, ""):
                     raise InvalidInput("缺少 draft_id")
                 return self._send(200, self.app.confirm(int(draft_id)))
+            if path == "/api/cancel":
+                draft_id = payload.get("draft_id")
+                if draft_id in (None, ""):
+                    raise InvalidInput("缺少 draft_id")
+                return self._send(200, self.app.cancel(int(draft_id)))
             if path == "/api/reset":
                 return self._send(200, self.app.reset())
             return self._send(404, {"error": "not found"})

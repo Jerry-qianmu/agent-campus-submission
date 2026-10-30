@@ -31,7 +31,7 @@
 
   <main class="layout">
     <section class="panel">
-      <h2>1 · 选素材</h2>
+      <h2>1 · 选素材 <span class="muted">（点标题看详情）</span></h2>
       <div id="materials" class="materials"></div>
 
       <h2>2 · 选时段</h2>
@@ -70,12 +70,27 @@
     </section>
 
     <section class="panel">
-      <h2>运行结果</h2>
-      <div id="empty" class="empty">
-        选一个素材和时段，点「运行 Agent」。<br />
-        <span class="muted">流程：读素材 → 规则审核 → 查时段 → 存草稿 → 提醒，每一步由模型选动作。</span>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="result">运行结果</button>
+        <button class="tab" data-tab="drafts">草稿箱 <span id="draft-badge" class="pill">0</span></button>
+        <button class="tab" data-tab="material">素材详情</button>
       </div>
-      <div id="result" hidden></div>
+
+      <div id="tab-result" class="tab-panel">
+        <div id="empty" class="empty">
+          选一个素材和时段，点「运行 Agent」。<br />
+          <span class="muted">流程：读素材 → 规则审核 → 查时段 → 存草稿 → 提醒，每一步由模型选动作。</span>
+        </div>
+        <div id="result" hidden></div>
+      </div>
+
+      <div id="tab-drafts" class="tab-panel" hidden>
+        <div id="drafts" class="empty">加载中…</div>
+      </div>
+
+      <div id="tab-material" class="tab-panel" hidden>
+        <div id="material-detail" class="empty">点左侧任意素材，查看它的审核状态、排期与冲突。</div>
+      </div>
     </section>
   </main>
 

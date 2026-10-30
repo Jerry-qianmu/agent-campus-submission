@@ -386,7 +386,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，120 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，128 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -414,7 +414,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 120 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 128 个测试。
 
 ---
 
@@ -433,9 +433,17 @@ src/server.py  (ThreadingHTTPServer)
 | `GET /` `/app.js` `/app.css` | 静态资源 | 白名单三份文件，路径不可穿越 |
 | `GET /api/bootstrap` | 素材库、已有排期、默认日期、provider 状态 | 界面首屏 |
 | `GET /api/slots?date=` | 当天 `free/occupied/closed` | 时段网格 |
+| `GET /api/drafts` | 全部排期（含 CANCELLED）+ 状态计数 + 冲突扫描 | 草稿箱标签页 |
+| `GET /api/materials/{id}` | 单素材：元数据、审核结论、自己的排期、与谁冲突 | 素材详情标签页 |
 | `POST /api/run` | 跑一次 ReAct | 返回与 CLI 相同的 JSON（含 `decisions`） |
-| `POST /api/confirm` | `schedule_confirm`，DRAFT → CONFIRMED | 界面「确认草稿」按钮 |
+| `POST /api/confirm` | `schedule_confirm`，DRAFT → CONFIRMED | 界面「确认」按钮 |
+| `POST /api/cancel` | `schedule_cancel`，DRAFT → CANCELLED 并释放时段 | 界面「取消」按钮 |
 | `POST /api/reset` | 删除运行库并从 `data/seed.json` 重建 | 演示用 |
+
+**冲突怎么判定**：`publish_schedule` 只有 `(material_id, date)` 唯一键，跨素材同档的「容量=1」是应用层校验
+（`schedule_save_draft` 在锁内检查）。所以界面做了一次**全量扫描**：同一时段若出现多个 DRAFT/CONFIRMED，
+就把它们列成冲突。正常情况下恒为空——它是兜底的一致性检查，不是常规路径。
+单个素材的详情里，还会逐条标出「这条排期所在的档位有没有别的素材」。
 
 几个刻意的取舍：
 

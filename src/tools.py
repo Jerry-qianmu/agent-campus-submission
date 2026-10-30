@@ -303,6 +303,27 @@ def schedule_confirm(db: JsonDatabase, draft_id: int) -> ToolResult:
         return _fail(ERR_DB_UNAVAILABLE, f"确认失败：{exc}", retryable=True)
 
 
+def schedule_cancel(db: JsonDatabase, draft_id: int) -> ToolResult:
+    """取消草稿：DRAFT → CANCELLED，该时段立即释放。CONFIRMED 不允许直接取消。"""
+    try:
+        with db.transaction() as session:
+            repo = Repository(session)
+            rows = session.select("publish_schedule", id=draft_id)
+            if not rows:
+                return _fail(ERR_NOT_FOUND, f"草稿 {draft_id} 不存在")
+            if rows[0]["status"] != "DRAFT":
+                return _fail(
+                    ERR_INVALID_STATE,
+                    f"草稿 {draft_id} 当前状态（{rows[0]['status']}）不可取消",
+                )
+            updated = repo.update_schedule(
+                draft_id, status="CANCELLED", confirm_time=None
+            )
+            return _ok(draft=updated)
+    except (LockTimeout, OSError) as exc:
+        return _fail(ERR_DB_UNAVAILABLE, f"取消失败：{exc}", retryable=True)
+
+
 # ---------------------------------------------------------------------------
 # 5. 提醒
 # ---------------------------------------------------------------------------

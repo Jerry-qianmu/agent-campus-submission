@@ -3,6 +3,7 @@
 const state = {
   bootstrap: null,
   materialId: null,
+  detailId: null,
   date: "",
   hour: null,
   slots: [],
@@ -21,8 +22,6 @@ const STATUS_LABEL = {
   tool_error: "调用失败",
   step_limit_reached: "达到步数上限（未完成）",
 };
-
-const PROVIDER_LABEL = { mock: "离线 Mock", deepseek: "DeepSeek", llm: "模型", openai: "OpenAI 兼容" };
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -51,7 +50,23 @@ function toast(message, isError = false) {
   toast._timer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
-/* ---------- 渲染：素材库 ---------- */
+function fmtSlot(iso) {
+  if (!iso) return "—";
+  const text = String(iso);
+  return text.length >= 16 ? `${text.slice(0, 10)} ${text.slice(11, 16)}` : text;
+}
+
+/* ---------- 标签页 ---------- */
+function switchTab(name) {
+  for (const tab of document.querySelectorAll(".tab")) {
+    tab.classList.toggle("active", tab.dataset.tab === name);
+  }
+  for (const panel of ["result", "drafts", "material"]) {
+    $(`tab-${panel}`).hidden = panel !== name;
+  }
+}
+
+/* ---------- 素材库 ---------- */
 function renderMaterials() {
   const box = $("materials");
   box.innerHTML = "";
@@ -66,13 +81,20 @@ function renderMaterials() {
         <span class="tags">${esc((item.tags || []).join(" · ") || "无标签")}${item.duration_sec ? " · " + esc(item.duration_sec) + "s" : ""}</span>
       </span>
       <span class="badge ${esc(status)}">${esc(item.audit_status || "PENDING")}</span>`;
-    row.title = item.risk_reason || "";
-    row.onclick = () => { state.materialId = item.id; renderMaterials(); };
+    row.title = item.risk_reason || "点击查看详情";
+    row.onclick = () => openMaterial(item.id);
     box.appendChild(row);
   }
 }
 
-/* ---------- 渲染：时段 ---------- */
+async function openMaterial(materialId) {
+  state.materialId = materialId;
+  renderMaterials();
+  switchTab("material");
+  await loadMaterialDetail(materialId);
+}
+
+/* ---------- 时段 ---------- */
 function renderSlots() {
   const box = $("slots");
   box.innerHTML = "";
@@ -112,7 +134,7 @@ async function loadSlots() {
   renderSlots();
 }
 
-/* ---------- 渲染：结果 ---------- */
+/* ---------- 运行结果 ---------- */
 function renderResult(result) {
   state.result = result;
   $("empty").hidden = true;
@@ -194,10 +216,183 @@ function renderRaw(result) {
     <pre>${esc(JSON.stringify(result, null, 2))}</pre></details>`;
 }
 
-function fmtSlot(iso) {
-  if (!iso) return "—";
-  const text = String(iso);
-  return text.length >= 16 ? `${text.slice(0, 10)} ${text.slice(11, 16)}` : text;
+/* ---------- 草稿箱 ---------- */
+async function loadDrafts() {
+  const box = $("drafts");
+  try {
+    const data = await api("/api/drafts");
+    renderDrafts(data);
+  } catch (error) {
+    box.className = "empty";
+    box.innerHTML = `<span class="error">草稿箱读取失败：${esc(error.message)}</span>`;
+  }
+}
+
+function renderDrafts(data) {
+  const badge = $("draft-badge");
+  badge.textContent = data.active;
+  badge.className = "pill" + (data.active ? " hot" : "");
+
+  const box = $("drafts");
+  if (!data.drafts.length) {
+    box.className = "empty";
+    box.textContent = "草稿箱是空的：选素材跑一次就有草稿了";
+    return;
+  }
+  box.className = "";
+  const counts = data.counts || {};
+  const rows = data.drafts.map((draft) => {
+    const conflict = draft.conflict_with.length
+      ? `<span class="badge conflict">与 ${esc(draft.conflict_with.join("、"))} 冲突</span>`
+      : "";
+    const actions = draft.status === "DRAFT"
+      ? `<button class="btn small" data-confirm="${draft.id}">确认</button>
+         <button class="btn small" data-cancel="${draft.id}">取消</button>`
+      : "";
+    return `<div class="draft-row">
+      <div class="draft-main">
+        <span class="mid">#${esc(draft.id)}</span>
+        <span class="title">${esc(draft.material_id)} · ${esc(draft.title)}</span>
+        <span class="badge ${esc(String(draft.status).toLowerCase())}">${esc(draft.status)}</span>
+        <span class="slot">${esc(fmtSlot(draft.date))}</span>
+        ${conflict}
+        ${draft.confirm_time ? `<span class="muted">确认于 ${esc(fmtSlot(draft.confirm_time))}</span>` : ""}
+      </div>
+      <div class="draft-actions">
+        ${actions}
+        <button class="btn small" data-detail="${esc(draft.material_id)}">看素材</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const conflictBox = Object.keys(data.conflicts || {}).length
+    ? `<div class="warn-box">检测到时段冲突：${Object.entries(data.conflicts)
+        .map(([slot, ids]) => `${esc(fmtSlot(slot))} 被 ${esc(ids.join("、"))} 同时占用`)
+        .join("；")}</div>`
+    : `<div class="ok-box">冲突扫描：当前没有同一时段被多个素材占用。</div>`;
+
+  box.innerHTML = `
+    <div class="drafts-head">
+      <span>共 <b>${data.drafts.length}</b> 条</span>
+      <span>DRAFT ${counts.DRAFT || 0} · CONFIRMED ${counts.CONFIRMED || 0} · CANCELLED ${counts.CANCELLED || 0}</span>
+      <span>已发布 ${data.published_total || 0}（本期不发布）</span>
+    </div>
+    ${conflictBox}
+    <div style="margin-top:12px">${rows}</div>`;
+
+  box.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.onclick = () => confirmDraft(Number(btn.dataset.confirm));
+  });
+  box.querySelectorAll("[data-cancel]").forEach((btn) => {
+    btn.onclick = () => cancelDraft(Number(btn.dataset.cancel));
+  });
+  box.querySelectorAll("[data-detail]").forEach((btn) => {
+    btn.onclick = () => openMaterial(btn.dataset.detail);
+  });
+}
+
+/* ---------- 素材详情 ---------- */
+async function loadMaterialDetail(materialId) {
+  state.detailId = materialId;
+  const box = $("material-detail");
+  try {
+    const data = await api(`/api/materials/${encodeURIComponent(materialId)}`);
+    box.className = "";
+    box.innerHTML = renderDetail(data);
+    wireDetail(data);
+  } catch (error) {
+    box.className = "empty";
+    box.innerHTML = `<span class="error">读取失败：${esc(error.message)}</span>`;
+  }
+}
+
+function renderDetail(data) {
+  const meta = data.metadata || {};
+  const audit = data.review || {};
+  const auditStatus = String(audit.status || "PENDING");
+
+  const metaCells = [
+    ["时长", meta.duration_sec ? `${meta.duration_sec}s` : "—"],
+    ["格式", meta.format || "—"],
+    ["版权", meta.copyright || "—"],
+    ["作者", meta.author || "—"],
+    ["标签", (meta.tags || []).join(" · ") || "—"],
+  ];
+
+  const schedules = data.schedules.length
+    ? data.schedules.map((item) => {
+        const conflict = item.conflict_with.length
+          ? `<span class="badge conflict">与 ${esc(item.conflict_with.join("、"))} 冲突</span>`
+          : `<span class="badge ok">无冲突</span>`;
+        const actions = item.status === "DRAFT"
+          ? `<span class="draft-actions">
+               <button class="btn small" data-confirm="${item.id}">确认</button>
+               <button class="btn small" data-cancel="${item.id}">取消</button>
+             </span>`
+          : "";
+        return `<div class="sched-row">
+          <span class="mid muted">#${esc(item.id)}</span>
+          <span class="slot">${esc(fmtSlot(item.date))}</span>
+          <span class="badge ${esc(String(item.status).toLowerCase())}">${esc(item.status)}</span>
+          ${conflict}
+          ${item.confirm_time ? `<span class="muted">确认于 ${esc(fmtSlot(item.confirm_time))}</span>` : ""}
+          ${actions}
+        </div>`;
+      }).join("")
+    : `<div class="ok-box">未排期：这个素材还没有草稿或排期。</div>`;
+
+  const conflicts = Object.keys(data.global_conflicts || {});
+  const conflictBox = conflicts.length
+    ? `<div class="warn-box">全局冲突：${Object.entries(data.global_conflicts)
+        .map(([slot, ids]) => `${esc(fmtSlot(slot))} 被 ${esc(ids.join("、"))} 同时占用`)
+        .join("；")}</div>`
+    : "";
+
+  return `
+    <div class="detail-head">
+      <span class="mid">${esc(data.id)}</span>
+      <h3>${esc(data.title)}</h3>
+      <span class="badge ${esc(auditStatus.toLowerCase())}">${esc(auditStatus)}</span>
+      ${data.conflict_count ? `<span class="badge conflict">冲突 ${data.conflict_count}</span>` : ""}
+    </div>
+    <div class="meta-grid">
+      ${metaCells.map(([k, v]) => `<div class="cell"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("")}
+    </div>
+
+    <div class="section-title">审核状态</div>
+    <div class="kv">
+      <div class="cell"><div class="k">结论</div><div class="v">${esc(auditStatus)}</div></div>
+      <div class="cell"><div class="k">风险原因</div><div class="v">${esc(audit.risk_reason || "无")}</div></div>
+      <div class="cell"><div class="k">规则版本</div><div class="v">${esc(audit.rules_version || "—")}</div></div>
+      <div class="cell"><div class="k">发布时间</div><div class="v">${audit.release_date ? esc(fmtSlot(audit.release_date)) : "未发布（本系统不发布）"}</div></div>
+    </div>
+
+    <div class="section-title">当前排期（${data.schedules.length}）</div>
+    ${schedules}
+    ${conflictBox}
+    <div class="row" style="margin-top:14px">
+      <button class="btn small" data-fill="${esc(data.id)}">用这个素材排期</button>
+      <button class="btn small" data-refresh="${esc(data.id)}">刷新</button>
+    </div>`;
+}
+
+function wireDetail(data) {
+  const box = $("material-detail");
+  box.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.onclick = () => confirmDraft(Number(btn.dataset.confirm));
+  });
+  box.querySelectorAll("[data-cancel]").forEach((btn) => {
+    btn.onclick = () => cancelDraft(Number(btn.dataset.cancel));
+  });
+  const fill = box.querySelector("[data-fill]");
+  if (fill) fill.onclick = () => {
+    state.materialId = data.id;
+    renderMaterials();
+    switchTab("result");
+    toast(`已选中 ${data.id}，选好时段后点「运行 Agent」`);
+  };
+  const refresh = box.querySelector("[data-refresh]");
+  if (refresh) refresh.onclick = () => loadMaterialDetail(data.id);
 }
 
 /* ---------- 动作 ---------- */
@@ -228,8 +423,8 @@ async function runAgent() {
       }),
     });
     renderResult(result);
-    await loadSlots();
-    await refreshMaterialBadges();
+    switchTab("result");
+    await refreshAfterMutation();
   } catch (error) {
     showError(error.message);
   } finally {
@@ -245,16 +440,36 @@ async function confirmDraft(draftId) {
       method: "POST",
       body: JSON.stringify({ draft_id: draftId }),
     });
-    const draft = data.draft || {};
-    toast(`草稿 #${draftId} 已确认（状态 ${draft.status}，仍未发布）`);
+    toast(`草稿 #${draftId} 已确认（${data.draft.status}，仍未发布）`);
     if (state.result && state.result.draft) {
-      state.result.draft.status = draft.status || "CONFIRMED";
+      state.result.draft.status = data.draft.status || "CONFIRMED";
       renderResult(state.result);
     }
-    await loadSlots();
+    await refreshAfterMutation();
   } catch (error) {
     toast(error.message, true);
   }
+}
+
+async function cancelDraft(draftId) {
+  if (!confirm(`取消草稿 #${draftId}？该时段会被释放。`)) return;
+  try {
+    const data = await api("/api/cancel", {
+      method: "POST",
+      body: JSON.stringify({ draft_id: draftId }),
+    });
+    toast(`草稿 #${draftId} 已取消（${data.draft.status}）`);
+    await refreshAfterMutation();
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+async function refreshAfterMutation() {
+  await loadDrafts();
+  await loadSlots();
+  if (state.detailId) await loadMaterialDetail(state.detailId);
+  await refreshMaterialBadges();
 }
 
 async function resetData() {
@@ -264,9 +479,13 @@ async function resetData() {
     toast("已重置");
     state.result = null;
     state.materialId = null;
+    state.detailId = null;
     $("result").hidden = true;
     $("empty").hidden = false;
+    $("material-detail").className = "empty";
+    $("material-detail").textContent = "点左侧任意素材，查看它的审核状态、排期与冲突。";
     await init(true);
+    await loadDrafts();
   } catch (error) {
     toast(error.message, true);
   }
@@ -331,12 +550,27 @@ function bindEvents() {
     localStorage.setItem("provider", $("provider").value);
     updateProviderHint();
   };
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.onclick = () => switchTab(tab.dataset.tab);
+  });
 }
 
 (async function boot() {
   bindEvents();
   try {
     await init();
+    await loadDrafts();
+    await loadMaterialDetail(state.materialId);
+    switchTab("result");
+
+    const params = new URLSearchParams(location.search);
+    const materialParam = params.get("material");
+    if (materialParam && state.bootstrap.materials.some((item) => item.id === materialParam)) {
+      await openMaterial(materialParam);
+    }
+    const tabParam = params.get("tab");
+    if (["result", "drafts", "material"].includes(tabParam)) switchTab(tabParam);
+
     await autoRunFromQuery();
   } catch (error) {
     showError(`初始化失败：${error.message}`);

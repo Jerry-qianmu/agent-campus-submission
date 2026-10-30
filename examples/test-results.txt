@@ -75,16 +75,25 @@ test_r006_long_title_is_low (test_rules.RulesTests.test_r006_long_title_is_low) 
 test_r007_empty_tags (test_rules.RulesTests.test_r007_empty_tags) ... ok
 test_r008_bad_format_blocks (test_rules.RulesTests.test_r008_bad_format_blocks) ... ok
 test_bootstrap_lists_materials_and_date (test_server.AppTests.test_bootstrap_lists_materials_and_date) ... ok
+test_cancel_frees_the_slot (test_server.AppTests.test_cancel_frees_the_slot) ... ok
+test_cannot_cancel_confirmed_draft (test_server.AppTests.test_cannot_cancel_confirmed_draft) ... ok
 test_confirm_flips_status_but_stays_draft (test_server.AppTests.test_confirm_flips_status_but_stays_draft) ... ok
+test_conflict_scan_detects_duplicate_slot (test_server.AppTests.test_conflict_scan_detects_duplicate_slot)
+容量是应用层校验，库里没有跨素材唯一键；直接插两条应被扫描出来。 ... ok
+test_drafts_lists_all_rows (test_server.AppTests.test_drafts_lists_all_rows) ... ok
 test_hard_constraint_does_not_save (test_server.AppTests.test_hard_constraint_does_not_save) ... ok
 test_invalid_provider_rejected (test_server.AppTests.test_invalid_provider_rejected) ... ok
+test_material_detail_reports_seed_schedule (test_server.AppTests.test_material_detail_reports_seed_schedule) ... ok
+test_material_detail_without_schedule (test_server.AppTests.test_material_detail_without_schedule) ... ok
 test_missing_hour_means_no_slot (test_server.AppTests.test_missing_hour_means_no_slot) ... ok
 test_reset_restores_seed (test_server.AppTests.test_reset_restores_seed) ... ok
 test_run_conflict_saves_draft (test_server.AppTests.test_run_conflict_saves_draft) ... ok
 test_slots_marks_seed_occupancy (test_server.AppTests.test_slots_marks_seed_occupancy) ... ok
 test_bad_payload_returns_400 (test_server.HttpTests.test_bad_payload_returns_400) ... ok
+test_drafts_and_material_endpoints (test_server.HttpTests.test_drafts_and_material_endpoints) ... ok
 test_health (test_server.HttpTests.test_health) ... ok
 test_index_and_assets (test_server.HttpTests.test_index_and_assets) ... ok
+test_material_detail_unknown_returns_400 (test_server.HttpTests.test_material_detail_unknown_returns_400) ... ok
 test_run_and_bootstrap (test_server.HttpTests.test_run_and_bootstrap) ... ok
 test_unknown_route_returns_404 (test_server.HttpTests.test_unknown_route_returns_404) ... ok
 test_auto_increment (test_store.StoreTests.test_auto_increment) ... ok
@@ -137,6 +146,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 120 tests in 11.805s
+Ran 128 tests in 11.769s
 
 OK

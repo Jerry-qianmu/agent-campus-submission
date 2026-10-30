@@ -87,6 +87,65 @@ class AppTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_confirmation")
         self.assertTrue(result["pending_confirmations"])
 
+    # -- 草稿箱与素材详情 ------------------------------------------------
+    def test_drafts_lists_all_rows(self):
+        self.app.run({"material_id": "M01", "date": "2026-11-05", "hour": 18})
+        data = self.app.drafts()
+        self.assertEqual(len(data["drafts"]), 2)  # 种子 M00 + 新草稿
+        self.assertEqual(data["counts"]["DRAFT"], 2)
+        self.assertEqual(data["published_total"], 0)
+        self.assertEqual(data["conflicts"], {})
+
+    def test_material_detail_without_schedule(self):
+        data = self.app.material_detail("M02")
+        self.assertEqual(data["id"], "M02")
+        self.assertFalse(data["has_schedule"])
+        self.assertEqual(data["schedules"], [])
+        self.assertEqual(data["review"]["status"], "PENDING")
+
+    def test_material_detail_reports_seed_schedule(self):
+        data = self.app.material_detail("M00")
+        self.assertTrue(data["has_schedule"])
+        self.assertEqual(data["schedules"][0]["date"], "2026-11-05T18:00:00+08:00")
+        self.assertEqual(data["schedules"][0]["status"], "DRAFT")
+        self.assertEqual(data["conflict_count"], 0)
+
+    def test_conflict_scan_detects_duplicate_slot(self):
+        """容量是应用层校验，库里没有跨素材唯一键；直接插两条应被扫描出来。"""
+        with self.app.db.transaction() as session:
+            session.insert(
+                "publish_schedule",
+                {
+                    "date": "2026-11-05T18:00:00+08:00",
+                    "material_id": "M05",
+                    "status": "DRAFT",
+                    "confirm_time": None,
+                    "idem_key": None,
+                },
+            )
+        data = self.app.drafts()
+        self.assertEqual(data["conflicts"]["2026-11-05T18:00:00+08:00"], ["M00", "M05"])
+        detail = self.app.material_detail("M00")
+        self.assertEqual(detail["conflict_count"], 1)
+        self.assertEqual(detail["schedules"][0]["conflict_with"], ["M05"])
+
+    def test_cancel_frees_the_slot(self):
+        result = self.app.run({"material_id": "M02", "date": "2026-11-05", "hour": 20})
+        draft_id = result["draft"]["draft_id"]
+        cancelled = self.app.cancel(draft_id)
+        self.assertEqual(cancelled["draft"]["status"], "CANCELLED")
+        occupied = self.app.slots("2026-11-05")["occupied"]
+        self.assertNotIn("2026-11-05T20:00:00+08:00", occupied)
+
+    def test_cannot_cancel_confirmed_draft(self):
+        from src.errors import InvalidInput
+
+        result = self.app.run({"material_id": "M02", "date": "2026-11-05", "hour": 20})
+        draft_id = result["draft"]["draft_id"]
+        self.app.confirm(draft_id)
+        with self.assertRaises(InvalidInput):
+            self.app.cancel(draft_id)
+
 
 class HttpTests(unittest.TestCase):
     """起一个真服务器，验证路由、静态资源与错误码。"""
@@ -156,6 +215,36 @@ class HttpTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             self._get("/api/nope")
         self.assertEqual(caught.exception.code, 404)
+
+    def test_drafts_and_material_endpoints(self):
+        _, run = self._post(
+            "/api/run",
+            {"material_id": "M01", "date": "2026-11-05", "hour": 18, "provider": "mock"},
+        )
+        status, body = self._get("/api/drafts")
+        self.assertEqual(status, 200)
+        drafts = json.loads(body)
+        self.assertGreaterEqual(len(drafts["drafts"]), 2)
+        self.assertIn("counts", drafts)
+
+        status, body = self._get("/api/materials/M01")
+        self.assertEqual(status, 200)
+        detail = json.loads(body)
+        self.assertEqual(detail["id"], "M01")
+        self.assertTrue(detail["has_schedule"])
+        self.assertEqual(detail["schedules"][0]["conflict_with"], [])
+
+        # 取消后时段释放，草稿变 CANCELLED
+        status, cancelled = self._post("/api/cancel", {"draft_id": run["draft"]["draft_id"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(cancelled["draft"]["status"], "CANCELLED")
+
+    def test_material_detail_unknown_returns_400(self):
+        with self.assertRaises(HTTPError) as caught:
+            self._get("/api/materials/M99")
+        self.assertEqual(caught.exception.code, 400)
+        body = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertIn("不存在", body["error"])
 
     def test_bad_payload_returns_400(self):
         request = Request(
