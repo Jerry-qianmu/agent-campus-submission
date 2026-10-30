@@ -53,7 +53,7 @@ class CliTests(unittest.TestCase):
                 if line.strip()
             ]
         self.assertEqual(len(lines), json.loads(process.stdout)["steps"])
-        self.assertEqual(lines[0]["action"], "material.get")
+        self.assertEqual(lines[0]["action"], "material_get")
         self.assertEqual(lines[-1]["action"], "finish")
         self.assertIn("rationale", lines[0])
         self.assertIn("summary", lines[0]["observation"])

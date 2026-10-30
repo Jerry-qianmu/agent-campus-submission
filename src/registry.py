@@ -6,8 +6,8 @@
     执行时统一走 execute_tool，并产出一句人类可读的 observation 摘要。
 
 七个动作
-    material.get / audit.check / slot.query / slot.find_alternative
-    / schedule.save_draft / schedule.save_draft(重试同一动作) / （finish 由策略层直接返回）
+    material_get / audit_check / slot_query / slot_find_alternative
+    / schedule_save_draft / schedule_save_draft(重试同一动作) / （finish 由策略层直接返回）
 """
 
 from __future__ import annotations
@@ -34,11 +34,11 @@ from .util import parse_datetime, to_iso
 
 # 模型可选动作的完整清单（finish 不是 DB 动作，由策略返回 Decision.finish）
 TOOL_NAMES = (
-    "material.get",
-    "audit.check",
-    "slot.query",
-    "slot.find_alternative",
-    "schedule.save_draft",
+    "material_get",
+    "audit_check",
+    "slot_query",
+    "slot_find_alternative",
+    "schedule_save_draft",
 )
 
 
@@ -82,8 +82,8 @@ def _required(props: dict[str, str]) -> dict[str, Any]:
 
 def _material_get(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     material_id = args["material_id"]
-    first = ctx.calls["material.get"] == 0
-    ctx.calls["material.get"] += 1
+    first = ctx.calls["material_get"] == 0
+    ctx.calls["material_get"] += 1
     degrade = ctx.faults.metadata_lag_once and first
     result = material_get(ctx.db, material_id, ctx.faults, degrade=degrade)
     if result.ok:
@@ -94,7 +94,7 @@ def _material_get(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
 
 def _audit_check(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     material_id = args["material_id"]
-    ctx.calls["audit.check"] += 1
+    ctx.calls["audit_check"] += 1
     metadata = ctx.observed_metadata.get(material_id)
     if metadata is None:
         with ctx.db.transaction() as session:
@@ -106,13 +106,15 @@ def _audit_check(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
 
 
 def _slot_query(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
-    ctx.calls["slot.query"] += 1
-    moment = parse_datetime(args["date"] + "T00:00:00+08:00")
+    ctx.calls["slot_query"] += 1
+    raw = str(args["date"]).strip()
+    # 模型可能只给日期，也可能给完整 ISO；两种都接受
+    moment = parse_datetime(raw if "T" in raw else f"{raw}T00:00:00+08:00")
     return slot_query(ctx.db, moment, ctx.now, ctx.faults, exclude_material=args.get("material_id"))
 
 
 def _slot_find_alternative(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
-    ctx.calls["slot.find_alternative"] += 1
+    ctx.calls["slot_find_alternative"] += 1
     desired = parse_datetime(args["slot"])
     result = find_alternatives(
         ctx.db, desired, ctx.now, exclude_material=args.get("material_id")
@@ -132,7 +134,7 @@ def _slot_find_alternative(ctx: ToolContext, args: dict[str, Any]) -> ToolResult
 
 
 def _save_draft(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
-    ctx.calls["schedule.save_draft"] += 1
+    ctx.calls["schedule_save_draft"] += 1
     return schedule_save_draft(
         ctx.db,
         args["material_id"],
@@ -143,32 +145,32 @@ def _save_draft(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
 
 
 TOOL_SPECS: dict[str, ToolSpec] = {
-    "material.get": ToolSpec(
-        name="material.get",
+    "material_get": ToolSpec(
+        name="material_get",
         description="按素材ID读取元数据与最近一次审核结论。第一步通常调用它确认素材存在。",
         parameters=_required({"material_id": "string"}),
         handler=_material_get,
     ),
-    "audit.check": ToolSpec(
-        name="audit.check",
+    "audit_check": ToolSpec(
+        name="audit_check",
         description="对素材跑审核规则，返回 PASSED / INCOMPLETE / RISK 与风险明细。",
         parameters=_required({"material_id": "string"}),
         handler=_audit_check,
     ),
-    "slot.query": ToolSpec(
-        name="slot.query",
+    "slot_query": ToolSpec(
+        name="slot_query",
         description="查询某一天各时段的占用情况，返回 free / occupied / closed 列表。",
         parameters=_required({"date": "string", "material_id": "string"}),
         handler=_slot_query,
     ),
-    "slot.find_alternative": ToolSpec(
-        name="slot.find_alternative",
+    "slot_find_alternative": ToolSpec(
+        name="slot_find_alternative",
         description="目标时段不可用时，按「先顺延再提前」找最近的可用时段。",
         parameters=_required({"slot": "string", "material_id": "string"}),
         handler=_slot_find_alternative,
     ),
-    "schedule.save_draft": ToolSpec(
-        name="schedule.save_draft",
+    "schedule_save_draft": ToolSpec(
+        name="schedule_save_draft",
         description="保存发布排期草稿（幂等）。只写 DRAFT，不会发布，也不会改动用户的时间要求。",
         parameters=_required({"material_id": "string", "slot": "string"}),
         handler=_save_draft,
@@ -216,25 +218,25 @@ def summarize(name: str, result: ToolResult) -> str:
         return f"{name} 失败：{result.code} {result.message}{tail}"
 
     data = result.data
-    if name == "material.get":
+    if name == "material_get":
         review = data.get("review") or {}
         return f"素材 {data['material']['material_id']} 存在，最近审核状态 {review.get('status') or '未审核'}"
-    if name == "audit.check":
+    if name == "audit_check":
         if data["conclusion"] == "INCOMPLETE":
             return f"审核结论 INCOMPLETE，缺少 {', '.join(data['missing_fields'])}"
         if data["conclusion"] == "RISK":
             return f"审核结论 RISK：{data['risk_reason']}"
         detail = "无风险" if not data["risks"] else f"{len(data['risks'])} 条中低风险"
         return f"审核结论 PASSED，{detail}"
-    if name == "slot.query":
+    if name == "slot_query":
         occupied = [item for item in data["slots"] if item["state"] == "occupied"]
         free = data["free"]
         head = "、".join(f"{item['slot'][11:16]}({item['occupied_by']})" for item in occupied) or "无占用"
         return f"占用：{head}；可用 {len(free)} 个时段，最早 {free[0][11:16] if free else '无'}"
-    if name == "slot.find_alternative":
+    if name == "slot_find_alternative":
         alternatives = [slot[11:16] for slot in data["alternatives"]]
         return f"替代时段：{'、'.join(alternatives) if alternatives else '无可用'}（原档占用方 {data.get('occupied_by') or '窗口外'}）"
-    if name == "schedule.save_draft":
+    if name == "schedule_save_draft":
         draft = data["draft"]
         if data.get("deduped"):
             return f"幂等命中，复用已有草稿 #{draft['id']}（{draft['status']}）"
@@ -245,15 +247,32 @@ def summarize(name: str, result: ToolResult) -> str:
 
 
 def execute_tool(name: str, args: dict[str, Any], ctx: ToolContext) -> tuple[ToolResult, str]:
-    """执行模型选择的动作，返回（结果, 摘要）。未注册的动作按参数错误处理。"""
+    """执行模型选择的动作，返回（结果, 摘要）。
+
+    模型给的参数不可控：可能少传、类型错、日期格式怪。这里统一兜住，
+    把"模型写坏了参数"降级成一次失败的 observation，而不是让整个进程崩掉。
+    """
     spec = TOOL_SPECS.get(name)
     if spec is None:
         return fail_result("INVALID_ARGUMENT", f"未知动作：{name}"), f"未知动作：{name}"
+    if not isinstance(args, dict):
+        return fail_result("INVALID_ARGUMENT", "动作参数必须是 JSON 对象"), "参数不是对象"
     missing = [key for key in spec.parameters["required"] if key not in args]
     if missing:
         return (
             fail_result("INVALID_ARGUMENT", f"{name} 缺少参数：{', '.join(missing)}"),
             f"{name} 参数不足：{', '.join(missing)}",
         )
-    result = spec.handler(ctx, args)
+    try:
+        result = spec.handler(ctx, args)
+    except (ValueError, TypeError, KeyError) as exc:
+        return (
+            fail_result("INVALID_ARGUMENT", f"{name} 参数不合法：{exc}"),
+            f"{name} 参数不合法：{exc}",
+        )
+    except Exception as exc:  # noqa: BLE001 - 兜底：工具内部异常不能击穿循环
+        return (
+            fail_result("TOOL_CRASH", f"{name} 执行异常：{exc}"),
+            f"{name} 执行异常：{exc}",
+        )
     return result, summarize(name, result)

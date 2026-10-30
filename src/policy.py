@@ -129,11 +129,11 @@ class MockPolicy:
 
     def decide(self, ctx: Context) -> Decision:
         material_id = ctx.material_id
-        gets = ctx.of("material.get")
+        gets = ctx.of("material_get")
 
         if not gets:
             return action(
-                "material.get", {"material_id": material_id}, "先确认素材是否存在、元数据是否可读"
+                "material_get", {"material_id": material_id}, "先确认素材是否存在、元数据是否可读"
             )
 
         latest_get = gets[-1]
@@ -145,11 +145,11 @@ class MockPolicy:
                 reason=latest_get["summary"],
             )
 
-        audits = ctx.of("audit.check")
+        audits = ctx.of("audit_check")
         if not audits or latest_get["step"] > audits[-1]["step"]:
             # 审核结论比最近一次读取更旧，说明元数据刚刷新过，必须重审再判断。
             return action(
-                "audit.check", {"material_id": material_id}, "素材已读到（或刚补查过），先跑规则审核"
+                "audit_check", {"material_id": material_id}, "素材已读到（或刚补查过），先跑规则审核"
             )
 
         latest_audit = audits[-1]
@@ -162,7 +162,7 @@ class MockPolicy:
         if conclusion == "INCOMPLETE":
             if len(gets) == 1:
                 return action(
-                    "material.get",
+                    "material_get",
                     {"material_id": material_id},
                     "审核缺字段，可能是上游元数据延迟，补查一次再判断",
                 )
@@ -180,11 +180,11 @@ class MockPolicy:
                 reason=latest_audit["data"]["risk_reason"],
             )
 
-        slots = ctx.of("slot.query")
+        slots = ctx.of("slot_query")
         if not slots:
             date = (ctx.desired_slot or to_iso(ctx.now))[:10]
             return action(
-                "slot.query",
+                "slot_query",
                 {"date": date, "material_id": material_id},
                 "审核通过，查目标日期的占用情况再决定档位",
             )
@@ -206,10 +206,10 @@ class MockPolicy:
         if ctx.desired_slot in free:
             return self._save(ctx, ctx.desired_slot, "目标时段空闲，直接落草稿")
 
-        alternatives = ctx.of("slot.find_alternative")
+        alternatives = ctx.of("slot_find_alternative")
         if not alternatives:
             return action(
-                "slot.find_alternative",
+                "slot_find_alternative",
                 {"slot": ctx.desired_slot, "material_id": material_id},
                 f"{_hhmm(ctx.desired_slot)} 不可用，先找最近的替代时段再决定",
             )
@@ -242,14 +242,14 @@ class MockPolicy:
 
     # -- 保存与收尾 ------------------------------------------------------
     def _save(self, ctx: Context, slot: str, rationale: str) -> Decision:
-        saves = ctx.of("schedule.save_draft")
+        saves = ctx.of("schedule_save_draft")
         if saves:
             latest = saves[-1]
             if latest["ok"]:
                 return self._finish_saved(ctx, slot)
             if latest.get("retryable") and len(saves) == 1:
                 return action(
-                    "schedule.save_draft",
+                    "schedule_save_draft",
                     {"material_id": ctx.material_id, "slot": slot},
                     "保存失败但错误可重试，重试一次同一动作；不可无限重试",
                 )
@@ -259,14 +259,14 @@ class MockPolicy:
                 reason=latest["summary"],
             )
         return action(
-            "schedule.save_draft",
+            "schedule_save_draft",
             {"material_id": ctx.material_id, "slot": slot},
             rationale,
         )
 
     def _finish_saved(self, ctx: Context, slot: str) -> Decision:
         pending: list[str] = []
-        audit = (ctx.last("audit.check") or {}).get("data") or {}
+        audit = (ctx.last("audit_check") or {}).get("data") or {}
         for risk in audit.get("risks") or []:
             if risk["level"] != "HIGH":
                 pending.append(f"{risk['code']} {risk['message']}，需确认后发布")
@@ -275,7 +275,7 @@ class MockPolicy:
             # 用户没给时间，我们只是"建议"了一个档位，必须标待确认而不是当成用户授权
             pending.append(f"未指定发布时间，建议 {_fmt(slot)}，需你确认")
         elif slot != ctx.desired_slot:
-            alternative = ctx.last("slot.find_alternative") or {}
+            alternative = ctx.last("slot_find_alternative") or {}
             owner = (alternative.get("data") or {}).get("occupied_by") or "其他素材"
             pending.append(
                 f"{_fmt(ctx.desired_slot)} 该时段已被素材 {owner} 占用，"
@@ -308,6 +308,11 @@ SYSTEM_PROMPT = """你是短视频素材的发布排期助手。你只能通过�
 4. 遇到可重试的工具错误最多重试一次，仍失败则 finish(tool_error)。
 5. 每次只调用一个工具；信息足够时调用 finish 给出结论。
 6. 决策理由写在 assistant 的 content 里，一句话即可，不要输出长篇推理。
+7. **只有调用过 schedule_save_draft 且成功之后，才允许 finish(completed) 或 finish(needs_confirmation)。**
+   没有落草稿就收尾时，只能 finish(blocked)，并说明"未保存草稿"。
+8. 时段冲突且用户是软性要求时，不需要先问；直接存到最近可用时段，把调整写进 pending 让用户确认。
+9. 若 audit_check 返回 INCOMPLETE，先再调用一次 material_get（可能是上游元数据延迟），然后重新 audit_check；
+   仍然缺字段才 finish(needs_input)。
 """
 
 

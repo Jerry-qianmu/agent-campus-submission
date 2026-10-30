@@ -73,12 +73,18 @@ test_seed_missing_creates_empty_database (test_store.StoreTests.test_seed_missin
 test_seeded_from_seed_file (test_store.StoreTests.test_seeded_from_seed_file) ... ok
 test_transaction_persists_and_is_atomic (test_store.StoreTests.test_transaction_persists_and_is_atomic) ... ok
 test_unique_material_date (test_store.StoreTests.test_unique_material_date) ... ok
+test_missing_argument (test_workflow.RegistryGuardTests.test_missing_argument) ... ok
+test_non_dict_arguments (test_workflow.RegistryGuardTests.test_non_dict_arguments) ... ok
+test_unknown_tool (test_workflow.RegistryGuardTests.test_unknown_tool) ... ok
+test_unparsable_date_does_not_crash (test_workflow.RegistryGuardTests.test_unparsable_date_does_not_crash) ... ok
 test_action_changes_after_observing_conflict (test_workflow.WorkflowTests.test_action_changes_after_observing_conflict)
 同一素材、同一时段冲突：软性要求会改档并存草稿，硬性要求则直接收手。 ... ok
 test_cancelled_slot_is_revived_not_duplicated (test_workflow.WorkflowTests.test_cancelled_slot_is_revived_not_duplicated) ... ok
 test_decision_log_has_required_fields (test_workflow.WorkflowTests.test_decision_log_has_required_fields) ... ok
 test_duplicate_submission_creates_one_draft (test_workflow.WorkflowTests.test_duplicate_submission_creates_one_draft) ... ok
 test_every_status_is_known (test_workflow.WorkflowTests.test_every_status_is_known) ... ok
+test_finish_without_draft_is_downgraded_to_blocked (test_workflow.WorkflowTests.test_finish_without_draft_is_downgraded_to_blocked)
+模型可能不存草稿就 finish(needs_confirmation)。不能声称有草稿。 ... ok
 test_hard_conflict_never_moves_slot (test_workflow.WorkflowTests.test_hard_conflict_never_moves_slot) ... ok
 test_input_object_is_not_mutated (test_workflow.WorkflowTests.test_input_object_is_not_mutated) ... ok
 test_llm_policy_drives_the_same_loop (test_workflow.WorkflowTests.test_llm_policy_drives_the_same_loop)
@@ -104,6 +110,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 91 tests in 10.809s
+Ran 96 tests in 10.810s
 
 OK

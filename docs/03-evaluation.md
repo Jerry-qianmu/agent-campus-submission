@@ -1,7 +1,7 @@
 # 测试与评估
 
-本页只记录离线流程验证，**未验证真实模型效果**（当前 `LLM_PROVIDER=mock`，决策由规则版 `MockPolicy` 给出）。
-运行记录见 [test-results.txt](../examples/test-results.txt)：`Ran 91 tests … OK`。
+本页记录离线流程验证 + 一次真实模型（DeepSeek）联调。
+离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 96 tests … OK`。
 
 ## 必须验收的六类
 
@@ -40,7 +40,28 @@
 A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因「审核结论缺字段」回头重读。
 三条路径的可读版见 [执行路径记录](../examples/run-records.md)。
 
-## 单元/集成测试分布（共 91）
+## 真实模型联调（DeepSeek `deepseek-flash`，2026-10-30）
+
+用真实 key 跑了 3 条路径，与 mock 结论对照：
+
+| 路径 | 状态 | 步数 | 草稿 | token | 与 mock 是否一致 |
+|---|---|---|---|---|---|
+| 软性冲突 `conflict` | `needs_confirmation` | 6 | #2 @ 19:00 | 12558 | 一致（mock 也是 6 步） |
+| 硬性冲突 `hard-conflict` | `blocked` | 4 | 无 | 6640 | 结论一致，少走一步 `slot_find_alternative` |
+| 信息缺失 `missing` | `needs_input` | 5 | 无 | 8102 | 加提示词规则后一致（补查一次再重审） |
+
+记录：[软性](../examples/run-record-deepseek-soft-conflict.jsonl) ·
+[硬性](../examples/run-record-deepseek-hard-conflict.jsonl) ·
+[缺失](../examples/run-record-deepseek-missing.jsonl)（可读版见 [run-records](../examples/run-records.md)）。
+
+联调打出的两个真实缺陷（离线 mock 永远测不到）：
+
+| 现象 | 根因 | 修法 | 回归 |
+|---|---|---|---|
+| `400 Invalid 'tools[0].function.name'` | 工具名带点号，不满足 `^[a-zA-Z0-9_-]+$` | 全部改下划线 | `test_clients` + 联调复跑 |
+| `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就收尾 | prompt 规则 7 + `finalize` 降级为 `blocked` | `test_finish_without_draft_is_downgraded_to_blocked` |
+
+## 单元/集成测试分布（共 96）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
@@ -48,7 +69,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `tests/test_rules.py` | 13 | R001–R008 逐条、缺失优先于风险、`metadata=None` |
 | `tests/test_llm.py` | 15 | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文与代码围栏剥离 |
 | `tests/test_clients.py` | 20 | DeepSeek 报文、tool_calls/usage 解析、429 重试与 Retry-After、400/401/402 不重试、超时/网络错误、思考模式参数、env 工厂 |
-| `tests/test_workflow.py` | 23 | 六类验收 + 补查 + 降级 + 复活 + **限步 + 决策日志 + 假模型驱动循环 + 模型失败降级** |
+| `tests/test_workflow.py` | 28 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 ## 可自动化的硬断言
@@ -75,8 +96,8 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | 步数与未完成状态 | `max_steps` 默认 10，超限返回 `step_limit_reached` | 已实现并有测试 |
 | 六类验收 | 六个示例 + 对应测试 | 全部通过 |
 | MySQL 设计保留 | `sql/schema.sql` + `docs/06` 映射表 | 保留且与 JSON 库一一对应 |
-| DeepSeek 接入 | `src/clients.py` + `tests/test_clients.py`（20 例） | 报文/重试/错误码已验证；**未用真实 key 联调**，需跑 `scripts/smoke_deepseek.py` 才能确认线上行为 |
-| 模型决策质量 | 默认 `MockPolicy`；DeepSeek 路径无真实运行记录 | **未验证**，不可据此评分真实模型效果 |
+| DeepSeek 接入 | `src/clients.py` + `tests/test_clients.py`（20 例） | 报文/重试/错误码已验证；**已用真实 key 跑通** 3 条路径（见下） |
+| 模型决策质量 | `deepseek-flash` 实跑 3 条路径 | 结论与 mock 一致；样本量小，不作质量结论 |
 | 生产可靠性 | 单文件库、文件锁、无服务化 | 局部实现；属加分项而非底线 |
 
 本仓库不能仅因目录完整被判题目达标；真实模型效果、多素材批量、并发压测均未验证。

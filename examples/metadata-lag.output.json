@@ -35,7 +35,7 @@
   "decisions": [
     {
       "step": 1,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M07"
       },
@@ -46,11 +46,11 @@
         "retryable": false,
         "summary": "素材 M07 存在，最近审核状态 未审核"
       },
-      "next": "audit.check"
+      "next": "audit_check"
     },
     {
       "step": 2,
-      "action": "audit.check",
+      "action": "audit_check",
       "args": {
         "material_id": "M07"
       },
@@ -61,11 +61,11 @@
         "retryable": false,
         "summary": "审核结论 INCOMPLETE，缺少 cover_url"
       },
-      "next": "material.get"
+      "next": "material_get"
     },
     {
       "step": 3,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M07"
       },
@@ -76,11 +76,11 @@
         "retryable": false,
         "summary": "素材 M07 存在，最近审核状态 INCOMPLETE"
       },
-      "next": "audit.check"
+      "next": "audit_check"
     },
     {
       "step": 4,
-      "action": "audit.check",
+      "action": "audit_check",
       "args": {
         "material_id": "M07"
       },
@@ -91,11 +91,11 @@
         "retryable": false,
         "summary": "审核结论 PASSED，无风险"
       },
-      "next": "slot.query"
+      "next": "slot_query"
     },
     {
       "step": 5,
-      "action": "slot.query",
+      "action": "slot_query",
       "args": {
         "date": "2026-11-05",
         "material_id": "M07"
@@ -107,11 +107,11 @@
         "retryable": false,
         "summary": "占用：18:00(M00)；可用 13 个时段，最早 09:00"
       },
-      "next": "schedule.save_draft"
+      "next": "schedule_save_draft"
     },
     {
       "step": 6,
-      "action": "schedule.save_draft",
+      "action": "schedule_save_draft",
       "args": {
         "material_id": "M07",
         "slot": "2026-11-05T21:00:00+08:00"
@@ -151,17 +151,17 @@
   "trace": [
     "prepare",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
-    "act:audit.check",
+    "act:audit_check",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
-    "act:audit.check",
+    "act:audit_check",
     "agent",
-    "act:slot.query",
+    "act:slot_query",
     "agent",
-    "act:schedule.save_draft",
+    "act:schedule_save_draft",
     "agent",
     "finalize"
   ]

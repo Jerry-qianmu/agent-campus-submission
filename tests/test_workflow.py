@@ -5,6 +5,9 @@ import unittest
 from src.clients import OpenAICompatibleClient
 from src.graph import run_request
 from src.policy import LLMPolicy
+from src.registry import ToolContext, execute_tool
+from src.rules import RULES_VERSION
+from src.tools import Faults
 from support import NOW, TempDb, load_example, read_table
 
 ALLOWED_STATUS = {
@@ -51,8 +54,8 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse(result["draft"]["saved"])
             self.assertEqual(len(read_table(db, "publish_schedule")), 1)
             # 模型看到 INCOMPLETE 后补查了一次元数据，并重新审核
-            self.assertEqual(actions(result).count("material.get"), 2)
-            self.assertEqual(actions(result).count("audit.check"), 2)
+            self.assertEqual(actions(result).count("material_get"), 2)
+            self.assertEqual(actions(result).count("audit_check"), 2)
 
     def test_rule_risk_blocks(self):
         with TempDb() as db:
@@ -105,7 +108,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse(result["draft"]["saved"])
             self.assertIn("DB_UNAVAILABLE", result["message"])
             # 可重试错误只重试一次：同一动作出现两次
-            self.assertEqual(actions(result).count("schedule.save_draft"), 2)
+            self.assertEqual(actions(result).count("schedule_save_draft"), 2)
             self.assertEqual(len(read_table(db, "publish_schedule")), 1)
             self.assertNotIn("已保存", result["message"])
 
@@ -114,8 +117,8 @@ class WorkflowTests(unittest.TestCase):
         with TempDb() as db:
             result = self.run_example(db, "metadata-lag")
             self.assertEqual(result["status"], "completed")
-            self.assertEqual(actions(result).count("audit.check"), 2)
-            self.assertEqual(actions(result).count("material.get"), 2)
+            self.assertEqual(actions(result).count("audit_check"), 2)
+            self.assertEqual(actions(result).count("material_get"), 2)
 
     def test_unknown_material(self):
         with TempDb() as db:
@@ -246,8 +249,8 @@ class WorkflowTests(unittest.TestCase):
         with TempDb() as db:
             hard = self.run_example(db, "hard-conflict")
 
-        self.assertIn("schedule.save_draft", actions(soft))
-        self.assertNotIn("schedule.save_draft", actions(hard))
+        self.assertIn("schedule_save_draft", actions(soft))
+        self.assertNotIn("schedule_save_draft", actions(hard))
         self.assertEqual(soft["status"], "needs_confirmation")
         self.assertEqual(hard["status"], "blocked")
         # 两条路径在观测到「18:00 被占」之前完全一致，之后分叉
@@ -256,10 +259,10 @@ class WorkflowTests(unittest.TestCase):
     def test_llm_policy_drives_the_same_loop(self):
         """用脚本化的假模型跑通「模型选动作 → 执行 → 观察 → 模型再选」。"""
         script = [
-            ("material.get", {"material_id": "M02"}),
-            ("audit.check", {"material_id": "M02"}),
-            ("slot.query", {"date": "2026-11-05", "material_id": "M02"}),
-            ("schedule.save_draft", {"material_id": "M02", "slot": "2026-11-05T20:00:00+08:00"}),
+            ("material_get", {"material_id": "M02"}),
+            ("audit_check", {"material_id": "M02"}),
+            ("slot_query", {"date": "2026-11-05", "material_id": "M02"}),
+            ("schedule_save_draft", {"material_id": "M02", "slot": "2026-11-05T20:00:00+08:00"}),
             ("finish", {"status": "completed", "suggested_slot": "2026-11-05T20:00:00+08:00"}),
         ]
         seen = {"index": 0, "bodies": []}
@@ -300,7 +303,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["draft"]["draft_id"], 2)
         self.assertEqual(
             actions(result),
-            ["material.get", "audit.check", "slot.query", "schedule.save_draft", "finish"],
+            ["material_get", "audit_check", "slot_query", "schedule_save_draft", "finish"],
         )
         # 第二轮请求里必须带上一轮的工具观测，否则模型无从「根据结果调整」
         second_round = seen["bodies"][1]["messages"]
@@ -325,6 +328,61 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(result["draft"]["saved"])
         self.assertIn("鉴权失败", result["message"])
         self.assertEqual(result["model_error"]["code"], "AUTH")
+
+    def test_finish_without_draft_is_downgraded_to_blocked(self):
+        """模型可能不存草稿就 finish(needs_confirmation)。不能声称有草稿。"""
+        from src.policy import finish as finish_decision
+
+        class NoSavePolicy:
+            name = "no_save"
+
+            def decide(self, ctx):
+                return finish_decision(
+                    "needs_confirmation", "直接给结论", pending=["确认一下"]
+                )
+
+        with TempDb() as db:
+            result = run_request(load_example("normal"), db, now=NOW, policy=NoSavePolicy())
+            rows = read_table(db, "publish_schedule")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["completed"])
+        self.assertFalse(result["draft"]["saved"])
+        self.assertEqual(len(rows), 1)  # 只有种子那一行
+        self.assertIn("没有任何草稿落库", result["message"])
+
+
+class RegistryGuardTests(unittest.TestCase):
+    """模型给的参数不可控：坏参数必须降级成失败观测，不能击穿循环。"""
+
+    def _ctx(self, db):
+        return ToolContext(db=db, now=NOW, faults=Faults(), rules_version=RULES_VERSION)
+
+    def test_unknown_tool(self):
+        with TempDb() as db:
+            result, summary = execute_tool("does_not_exist", {}, self._ctx(db))
+        self.assertFalse(result.ok)
+        self.assertEqual(result.code, "INVALID_ARGUMENT")
+        self.assertIn("未知动作", summary)
+
+    def test_missing_argument(self):
+        with TempDb() as db:
+            result, _ = execute_tool("material_get", {}, self._ctx(db))
+        self.assertEqual(result.code, "INVALID_ARGUMENT")
+
+    def test_unparsable_date_does_not_crash(self):
+        with TempDb() as db:
+            result, summary = execute_tool(
+                "slot_query", {"date": "明天下午", "material_id": "M01"}, self._ctx(db)
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.code, "INVALID_ARGUMENT")
+        self.assertIn("参数不合法", summary)
+
+    def test_non_dict_arguments(self):
+        with TempDb() as db:
+            result, _ = execute_tool("material_get", ["M01"], self._ctx(db))
+        self.assertEqual(result.code, "INVALID_ARGUMENT")
 
 
 if __name__ == "__main__":

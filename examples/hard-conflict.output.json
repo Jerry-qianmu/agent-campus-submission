@@ -36,7 +36,7 @@
   "decisions": [
     {
       "step": 1,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M01"
       },
@@ -47,11 +47,11 @@
         "retryable": false,
         "summary": "素材 M01 存在，最近审核状态 未审核"
       },
-      "next": "audit.check"
+      "next": "audit_check"
     },
     {
       "step": 2,
-      "action": "audit.check",
+      "action": "audit_check",
       "args": {
         "material_id": "M01"
       },
@@ -62,11 +62,11 @@
         "retryable": false,
         "summary": "审核结论 PASSED，无风险"
       },
-      "next": "slot.query"
+      "next": "slot_query"
     },
     {
       "step": 3,
-      "action": "slot.query",
+      "action": "slot_query",
       "args": {
         "date": "2026-11-05",
         "material_id": "M01"
@@ -78,11 +78,11 @@
         "retryable": false,
         "summary": "占用：18:00(M00)；可用 13 个时段，最早 09:00"
       },
-      "next": "slot.find_alternative"
+      "next": "slot_find_alternative"
     },
     {
       "step": 4,
-      "action": "slot.find_alternative",
+      "action": "slot_find_alternative",
       "args": {
         "slot": "2026-11-05T18:00:00+08:00",
         "material_id": "M01"
@@ -124,13 +124,13 @@
   "trace": [
     "prepare",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
-    "act:audit.check",
+    "act:audit_check",
     "agent",
-    "act:slot.query",
+    "act:slot_query",
     "agent",
-    "act:slot.find_alternative",
+    "act:slot_find_alternative",
     "agent",
     "finalize"
   ]

@@ -15,7 +15,7 @@
 
 | 题目要求 | 实现位置 | 示例输入 | 测试用例 |
 |---|---|---|---|
-| 正常排期 | 模型选 `schedule.save_draft` 并 `finish(completed)` | [normal](../examples/normal.input.json) | `test_normal_completes_with_draft` |
+| 正常排期 | 模型选 `schedule_save_draft` 并 `finish(completed)` | [normal](../examples/normal.input.json) | `test_normal_completes_with_draft` |
 | 素材信息缺失 | `rules.py` 缺失字段 → `needs_input` | [missing](../examples/missing.input.json) | `test_missing_material_info_blocks` |
 | 规则风险 | `rules.py` R005/R008 → `blocked` | [risk](../examples/risk.input.json) | `test_rule_risk_blocks` |
 | 时段冲突 | `slot_query` + 硬/软分流 | [conflict](../examples/conflict.input.json)、[hard-conflict](../examples/hard-conflict.input.json) | `test_slot_conflict_suggests_alternative`、`test_hard_conflict_never_moves_slot` |

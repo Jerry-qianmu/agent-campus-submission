@@ -14,15 +14,15 @@ flowchart LR
 一次真实运行的骨架（软性冲突，详见 [执行路径记录](../examples/run-records.md)）：
 
 ```
-agent: 还不知道素材是否存在        → material.get(M01)
+agent: 还不知道素材是否存在        → material_get(M01)
 act  : 素材存在                    → 观测：存在，最近审核 未审核
-agent: 有了素材，该审核了          → audit.check(M01)
+agent: 有了素材，该审核了          → audit_check(M01)
 act  : PASSED                      → 观测：无风险
-agent: 审核通过，查目标日      → slot.query(2026-11-05)
+agent: 审核通过，查目标日      → slot_query(2026-11-05)
 act  : 18:00 被 M00 占            → 观测：19:00、20:00 可用
-agent: 用户没说死，找替代          → slot.find_alternative(18:00)
+agent: 用户没说死，找替代          → slot_find_alternative(18:00)
 act  : 19:00 / 20:00              → 观测：替代时段
-agent: 顺延到 19:00 但要人确认     → schedule.save_draft(M01, 19:00)
+agent: 顺延到 19:00 但要人确认     → schedule_save_draft(M01, 19:00)
 act  : 草稿 #2                    → 观测：已保存 DRAFT
 agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 ```

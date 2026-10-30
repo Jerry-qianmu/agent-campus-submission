@@ -39,7 +39,7 @@
   "decisions": [
     {
       "step": 1,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M04"
       },
@@ -50,11 +50,11 @@
         "retryable": false,
         "summary": "素材 M04 存在，最近审核状态 未审核"
       },
-      "next": "audit.check"
+      "next": "audit_check"
     },
     {
       "step": 2,
-      "action": "audit.check",
+      "action": "audit_check",
       "args": {
         "material_id": "M04"
       },
@@ -92,9 +92,9 @@
   "trace": [
     "prepare",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
-    "act:audit.check",
+    "act:audit_check",
     "agent",
     "finalize"
   ]

@@ -57,11 +57,11 @@ flowchart TD
 
 | 动作 | 参数 | 返回摘要（模型看到的那句话） |
 | --- | --- | --- |
-| `material.get` | `material_id` | 素材是否存在、最近审核状态 |
-| `audit.check` | `material_id` | `PASSED` / 缺哪些字段 / 命中哪条规则 |
-| `slot.query` | `date`, `material_id` | 当天占用情况与可用时段数 |
-| `slot.find_alternative` | `slot`, `material_id` | 替代时段列表与占用方 |
-| `schedule.save_draft` | `material_id`, `slot` | 草稿 ID / 幂等命中 / 失败原因 |
+| `material_get` | `material_id` | 素材是否存在、最近审核状态 |
+| `audit_check` | `material_id` | `PASSED` / 缺哪些字段 / 命中哪条规则 |
+| `slot_query` | `date`, `material_id` | 当天占用情况与可用时段数 |
+| `slot_find_alternative` | `slot`, `material_id` | 替代时段列表与占用方 |
+| `schedule_save_draft` | `material_id`, `slot` | 草稿 ID / 幂等命中 / 失败原因 |
 
 `finish` 不是数据库动作，由策略直接返回终局，因此不会出现在 `observations` 里。
 
@@ -71,11 +71,11 @@ flowchart TD
 
 ```jsonc
 // decisions[i]
-{"step": 4, "action": "slot.find_alternative",
+{"step": 4, "action": "slot_find_alternative",
  "args": {"slot": "2026-11-05T18:00:00+08:00", "material_id": "M01"},
  "rationale": "18:00 不可用，先找最近的替代时段再决定",
  "observation": {"ok": true, "summary": "替代时段：19:00、20:00（原档占用方 M00）"},
- "next": "schedule.save_draft"}
+ "next": "schedule_save_draft"}
 ```
 
 `next` 到 `finalize` 才补上（当时还不知道下一步），这样一条日志就同时具备
@@ -149,8 +149,20 @@ flowchart TD
 模型层失败时循环不会崩：`_agent` 捕获 `ChatError` 后 `finish(tool_error)`，
 输出里带 `model_error{code,status,retryable}`，并保证 `published=false`、不落草稿。
 
-手动联调用 `python -m scripts.smoke_deepseek`（`--full` 会再跑一遍完整示例）。
-**注意：本仓库未用真实 key 跑过联调**，只验证了报文构造、重试矩阵与失败降级（`tests/test_clients.py`）。
+**已用真实 key 联调**（2026-10-30，`deepseek-flash`，`thinking=disabled`），3 条路径的结论与 mock 一致：
+软性冲突 6 步存草稿 19:00、硬性冲突 4 步 `blocked`、信息缺失 5 步 `needs_input`。
+记录见 [examples/run-records.md](../examples/run-records.md#真实模型记录deepseek-deepseek-flash)、
+[docs/03](03-evaluation.md)。手动复跑：`python -m scripts.smoke_deepseek --full`。
+
+联调打出的两条真实约束（已修复，离线 mock 测不到）：
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| `400 Invalid 'tools[0].function.name'` | function name 只允许 `^[a-zA-Z0-9_-]+$`，原来的 `material.get` 带点号 | 工具名统一改下划线，源码/文档/记录同步 |
+| `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就 `finish` | prompt 规则 7 + `finalize` 兜底降级为 `blocked` |
+
+配置来源：`os.environ` 优先，其次读取仓库根 `.env`（`src/env.py`，支持行尾注释、引号、`export`），
+可用 `--env-file` 指定其它文件。
 
 ---
 
@@ -227,14 +239,14 @@ with db.transaction() as session:      # 1) 抢锁 2) 读全库 3) 改内存
 
 | 模型动作 | 实现函数 | 关键行为 | 错误码 |
 | --- | --- | --- | --- |
-| `material.get` | `material_get` | 读元数据 + 最近审核结论 | `NOT_FOUND` / `SOURCE_UNAVAILABLE` |
-| `audit.check` | `audit_check` | 跑 R001–R008 并 upsert `material_review` | `RULES_UNAVAILABLE` |
-| `slot.query` | `slot_query` | 天粒度，返回 `free/occupied/closed` | `DB_UNAVAILABLE` |
-| `slot.find_alternative` | `find_alternatives` | 先顺延、再提前，最多 2 个 | 同上 |
-| `schedule.save_draft` | `schedule_save_draft` | 幂等 + 容量校验 + 复活 CANCELLED | `SLOT_CONFLICT` / `INVALID_STATE` / `DB_UNAVAILABLE` / `DB_WRITE_REJECTED` |
+| `material_get` | `material_get` | 读元数据 + 最近审核结论 | `NOT_FOUND` / `SOURCE_UNAVAILABLE` |
+| `audit_check` | `audit_check` | 跑 R001–R008 并 upsert `material_review` | `RULES_UNAVAILABLE` |
+| `slot_query` | `slot_query` | 天粒度，返回 `free/occupied/closed` | `DB_UNAVAILABLE` |
+| `slot_find_alternative` | `find_alternatives` | 先顺延、再提前，最多 2 个 | 同上 |
+| `schedule_save_draft` | `schedule_save_draft` | 幂等 + 容量校验 + 复活 CANCELLED | `SLOT_CONFLICT` / `INVALID_STATE` / `DB_UNAVAILABLE` / `DB_WRITE_REJECTED` |
 | （框架动作）| `schedule_confirm` / `notify_push` | 确认草稿 / 提醒幂等 | `CHANNEL_UNAVAILABLE` |
 
-`audit.check` 审的是 `material.get` 刚返回的那份快照（存在 `ToolContext.observed_metadata` 里），
+`audit_check` 审的是 `material_get` 刚返回的那份快照（存在 `ToolContext.observed_metadata` 里），
 而不是重新读库——否则「上游元数据延迟」这类场景审核永远看不到缺字段，补查就成了摆设。
 
 ### 4.1 幂等键
@@ -370,7 +382,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，91 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，96 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -388,7 +400,8 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 | 项 | 现状 | 真实化要做什么 |
 | --- | --- | --- |
-| 决策模型 | 默认 `MockPolicy`；DeepSeek 客户端（`src/clients.py`）已实现并单测 | 设置 `DEEPSEEK_API_KEY` 后 `--provider deepseek` 即可；**未用真实 key 联调**，决策质量无证据 |
+| 决策模型 | 默认 `MockPolicy`；DeepSeek 已用真实 key 跑通 3 条路径 | 只测了 `deepseek-flash` 单模型单次，稳定性与质量仍需更多样本 |
+| 配置加载 | 支持 `.env`（行尾注释/引号/export），环境变量优先 | 不支持变量插值与多行值 |
 | 存储 | 单文件 JSON + 文件锁 | 换 MySQL：repository 方法体改 SQLAlchemy，`store.py` 整体替换 |
 | 并发 | 文件锁串行，单机有效 | MySQL 下用 `SELECT … FOR UPDATE` + 唯一键 |
 | 容量 | 一个时段 1 条 | `publish_window.capacity` 尚未实现 |
@@ -397,7 +410,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 91 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 96 个测试。
 
 ---
 
@@ -409,6 +422,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | ReAct 循环与限步 | [`src/graph.py`](../src/graph.py) |
 | 决策策略（Mock / LLM） | [`src/policy.py`](../src/policy.py) |
 | 模型客户端（DeepSeek / OpenAI 兼容） | [`src/clients.py`](../src/clients.py) |
+| `.env` 加载 | [`src/env.py`](../src/env.py) |
 | 动作注册表与观测摘要 | [`src/registry.py`](../src/registry.py) |
 | 工具实现 | [`src/tools.py`](../src/tools.py) |
 | 审核规则 | [`src/rules.py`](../src/rules.py) |

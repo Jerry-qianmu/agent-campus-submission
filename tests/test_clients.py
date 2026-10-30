@@ -26,7 +26,7 @@ OK_BODY = json.dumps(
                             "id": "call_1",
                             "type": "function",
                             "function": {
-                                "name": "material.get",
+                                "name": "material_get",
                                 "arguments": '{"material_id": "M01"}',
                             },
                         }
@@ -75,7 +75,7 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(result.content, "先读素材")
         self.assertEqual(result.reasoning, "用户在问 M01")
         self.assertEqual(result.finish_reason, "tool_calls")
-        self.assertEqual(result.tool_calls[0]["name"], "material.get")
+        self.assertEqual(result.tool_calls[0]["name"], "material_get")
         self.assertEqual(result.tool_calls[0]["arguments"], '{"material_id": "M01"}')
         self.assertEqual(result.usage["total_tokens"], 150)
         self.assertNotIn("prompt_tokens_details", result.usage)  # 只保留整型计数

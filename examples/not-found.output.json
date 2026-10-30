@@ -7,7 +7,7 @@
   "material_id": "M99",
   "review_status": "UNKNOWN",
   "risk_reason": null,
-  "reason": "material.get 失败：NOT_FOUND 素材 M99 不存在",
+  "reason": "material_get 失败：NOT_FOUND 素材 M99 不存在",
   "rule_hits": [],
   "missing_fields": [],
   "requested_slot": "2026-11-05T20:00:00+08:00",
@@ -25,7 +25,7 @@
   "decisions": [
     {
       "step": 1,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M99"
       },
@@ -34,7 +34,7 @@
         "ok": false,
         "code": "NOT_FOUND",
         "retryable": false,
-        "summary": "material.get 失败：NOT_FOUND 素材 M99 不存在"
+        "summary": "material_get 失败：NOT_FOUND 素材 M99 不存在"
       },
       "next": "finish"
     },
@@ -43,7 +43,7 @@
       "action": "finish",
       "args": {
         "status": "not_found",
-        "reason": "material.get 失败：NOT_FOUND 素材 M99 不存在"
+        "reason": "material_get 失败：NOT_FOUND 素材 M99 不存在"
       },
       "rationale": "素材读不到，无法继续，如实告知而不是编造",
       "observation": null,
@@ -51,7 +51,7 @@
     }
   ],
   "llm_usage": {},
-  "message": "素材不存在，请确认素材 ID：material.get 失败：NOT_FOUND 素材 M99 不存在。",
+  "message": "素材不存在，请确认素材 ID：material_get 失败：NOT_FOUND 素材 M99 不存在。",
   "evidence": {
     "material_id": "M99",
     "rules_version": "r2026.11.1",
@@ -63,7 +63,7 @@
   "trace": [
     "prepare",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
     "finalize"
   ]

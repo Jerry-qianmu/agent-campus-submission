@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.clients import ChatError, build_client  # noqa: E402
+from src.env import load_dotenv  # noqa: E402
 from src.graph import run_request  # noqa: E402
 from src.registry import tool_schemas  # noqa: E402
 from src.store import JsonDatabase  # noqa: E402
@@ -108,6 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--full", action="store_true", help="额外跑一遍完整 ReAct 示例")
     args = parser.parse_args(argv)
+
+    loaded = load_dotenv()
+    if loaded:
+        print(f"[env] 从 .env 载入：{', '.join(sorted(loaded))}")
 
     try:
         client = _check_client()

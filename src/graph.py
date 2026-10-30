@@ -225,9 +225,9 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
         following = decisions[index + 1] if index + 1 < len(decisions) else None
         record["next"] = following["action"] if following else None
 
-    audit = (_last_ok(observations, "audit.check") or {}).get("data") or {}
-    alternative = (_last_ok(observations, "slot.find_alternative") or {}).get("data") or {}
-    save_observation = _last_any(observations, "schedule.save_draft")
+    audit = (_last_ok(observations, "audit_check") or {}).get("data") or {}
+    alternative = (_last_ok(observations, "slot_find_alternative") or {}).get("data") or {}
+    save_observation = _last_any(observations, "schedule_save_draft")
 
     draft: dict[str, Any] = {"saved": False}
     suggested_slot = finish_payload.get("suggested_slot")
@@ -241,6 +241,15 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
             "reused": bool(saved.get("reused")),
         }
         suggested_slot = suggested_slot or saved["draft"]["date"]
+
+    if status in ("completed", "needs_confirmation") and not draft.get("saved"):
+        # 模型可能直接 finish 而不落草稿。不能声称"已保存/待确认"，按未完成处理。
+        status = "blocked"
+        finish_payload = {
+            **finish_payload,
+            "reason": "模型声称完成，但没有任何草稿落库；按未完成处理。"
+            + (f" 模型原话：{finish_payload.get('reason')}" if finish_payload.get("reason") else ""),
+        }
 
     pending = list(finish_payload.get("pending") or [])
     intent = state.get("intent") or {}

@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .env import load_dotenv
 from .graph import run_request
 from .store import JsonDatabase
 from .util import parse_datetime
@@ -122,7 +124,17 @@ def main(argv: list[str] | None = None) -> int:
         help="模型提供方；省略则读 LLM_PROVIDER，默认 mock（离线规则策略）",
     )
     parser.add_argument("--model", help="覆盖模型名，如 deepseek-flash / deepseek-v4-pro")
+    parser.add_argument(
+        "--env-file", help="指定 .env 路径；省略则读仓库根目录的 .env（已存在的环境变量优先）"
+    )
     args = parser.parse_args(argv)
+
+    # .env 必须在构造任何客户端之前加载，否则 os.environ 里没有 key
+    loaded = load_dotenv(args.env_file)
+    provider = (args.provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    if loaded and provider != "mock":
+        # 只打键名不打值；mock 模式不需要打扰
+        print(f"[env] 已载入 {len(loaded)} 个变量：{', '.join(sorted(loaded))}", file=sys.stderr)
 
     try:
         request = read_request(Path(args.input))

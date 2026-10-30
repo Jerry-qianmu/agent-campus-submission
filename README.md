@@ -32,7 +32,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 91 个用例
+python -m unittest discover -s tests -v                        # 96 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -54,15 +54,15 @@ python -m unittest discover -s tests -v                        # 91 个用例
 `agent ⇄ act` 之间没有写死的业务分支——**下一步是什么，取决于上一步工具返回了什么**。
 
 ```
-agent: 还不知道素材是否存在        → material.get(M01)
+agent: 还不知道素材是否存在        → material_get(M01)
 act  : 素材存在                    → observation: 存在，最近审核 未审核
-agent: 有了素材，该审核了          → audit.check(M01)
+agent: 有了素材，该审核了          → audit_check(M01)
 act  : PASSED                      → observation: 无风险
-agent: 审核过了，查目标日          → slot.query(2026-11-05)
+agent: 审核过了，查目标日          → slot_query(2026-11-05)
 act  : 18:00 被 M00 占            → observation: 19:00、20:00 可用
-agent: 用户没说死，先找替代        → slot.find_alternative(18:00)
+agent: 用户没说死，先找替代        → slot_find_alternative(18:00)
 act  : 19:00 / 20:00              → observation: 替代时段
-agent: 顺延到 19:00 但要人确认     → schedule.save_draft(M01, 19:00)
+agent: 顺延到 19:00 但要人确认     → schedule_save_draft(M01, 19:00)
 act  : 草稿 #2                    → observation: 已保存 DRAFT
 agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 ```
@@ -71,19 +71,24 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 
 | 输入 | 第 4 步观测 | 第 5 步动作 | 结果 |
 | --- | --- | --- | --- |
-| `conflict`（希望 18:00） | 替代 19:00/20:00 | `schedule.save_draft(19:00)` | 草稿 #2，待确认 |
+| `conflict`（希望 18:00） | 替代 19:00/20:00 | `schedule_save_draft(19:00)` | 草稿 #2，待确认 |
 | `hard-conflict`（必须 18:00） | 替代 19:00/20:00 | `finish(blocked)` | 不落库，交回选项 |
 
 完整记录（含参数、观测、后续动作、决策依据）见 [examples/run-records.md](examples/run-records.md)；
 机器可读版是同目录的 `run-record-*.jsonl`。
 
 **边界**：默认 `MockPolicy` 是规则决策，它证明循环成立、判定可靠，**不证明真实模型的决策质量**。
-真实模型路径 `LLMPolicy` 已实现（见下节），但**未用真实 key 跑过联调**。
+真实模型路径 `LLMPolicy` + DeepSeek 客户端已用真实 key 跑通 3 条路径（见下节与
+[run-records](examples/run-records.md#真实模型记录deepseek-deepseek-flash)）。
 
 ## 接入真实模型（DeepSeek）
 
 ```sh
-# PowerShell：只对当前会话生效，不要写进仓库
+# 方式一：写进仓库根的 .env（会被自动加载，行尾注释也支持）
+#   DEEPSEEK_API_KEY=sk-...
+#   DEEPSEEK_MODEL=deepseek-flash
+
+# 方式二：只对当前会话生效
 $env:DEEPSEEK_API_KEY = "sk-..."
 
 python -m scripts.smoke_deepseek          # 连通性 + 工具调用两个检查点
@@ -91,7 +96,12 @@ python -m scripts.smoke_deepseek --full   # 再跑一遍完整 ReAct 示例（co
 
 python -m src.main --input examples/conflict.input.json --provider deepseek
 python -m src.main --input examples/conflict.input.json --provider deepseek --model deepseek-v4-pro
+python -m src.main --input examples/conflict.input.json --provider deepseek --env-file .env.local
 ```
+
+已用 `deepseek-flash` 实跑 3 条路径，结论与离线 mock 一致：
+软性冲突 6 步存草稿 19:00、硬性冲突 4 步 `blocked`、信息缺失 5 步 `needs_input`。
+记录见 [examples/run-records.md](examples/run-records.md#真实模型记录deepseek-deepseek-flash)。
 
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
@@ -106,6 +116,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --mo
 实现要点（细节见 [docs/06 §2.7](docs/06-implementation.md)）：
 
 - 走 OpenAI 兼容协议，`tools` + `tool_choice=auto`，`reasoning_content` 只读不回传；
+- 工具名必须满足 `^[a-zA-Z0-9_-]+$`（DeepSeek 会 400 拒绝点号），所以统一用 `material_get` 这种下划线命名；
 - 重试只针对 429 / 5xx / 超时，指数退避，尊重 `Retry-After`；400/401/402/422 立即失败；
 - 模型层失败时输出 `status=tool_error` + `model_error{code,status,retryable}`，不落草稿、不谎报；
 - 每轮 `usage` 累加进输出的 `llm_usage`，可直接看 token 成本。
@@ -176,10 +187,10 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --mo
   "published": false,                    // 恒为 false：本期不接真实发布
   "steps": 6, "tool_calls": 5, "max_steps": 10,
   "decisions": [                         // 每轮模型决策，可逐条复核
-    {"step": 4, "action": "slot.find_alternative", "args": {"slot": "2026-11-05T18:00:00+08:00"},
+    {"step": 4, "action": "slot_find_alternative", "args": {"slot": "2026-11-05T18:00:00+08:00"},
      "rationale": "18:00 不可用，先找最近的替代时段再决定",
      "observation": {"ok": true, "summary": "替代时段：19:00、20:00（原档占用方 M00）"},
-     "next": "schedule.save_draft"}
+     "next": "schedule_save_draft"}
   ],
   "message": "已保存草稿（草稿ID 2），但有待确认项：……未发布。"
 }
@@ -215,7 +226,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --mo
 - `published` 恒为 `false`，没有任何代码路径写 `PUBLISHED` 或 `release_date`；`status` 上限是 `CONFIRMED`（仍是草稿）。
 - 硬性时间要求（「必须 18:00」）遇到冲突时**不会被自动改期**，只会把冲突和选项交回用户。
 - 素材信息缺失时不猜、不填默认值，只列出缺什么。
-- 默认决策是规则版 `MockPolicy`；DeepSeek 客户端已实现并单测，但**未用真实 key 联调**，线上行为需先跑 `scripts/smoke_deepseek.py`。
+- 默认决策是规则版 `MockPolicy`；DeepSeek 已实跑 3 条路径（单模型单次，样本不足以下质量结论）。
 - 达到 `max_steps` 会返回 `step_limit_reached`，`finished=false`，不产生草稿。
 
 ## 提交信息

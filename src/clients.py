@@ -28,6 +28,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
+from .env import describe_sources
 from .errors import AgentError, InvalidInput
 
 RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
@@ -388,7 +389,9 @@ def build_client(provider: str | None = None, model: str | None = None) -> ChatC
         api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("LLM_API_KEY")
         if not api_key:
             raise InvalidInput(
-                "LLM_PROVIDER=deepseek 需要设置环境变量 DEEPSEEK_API_KEY（也可用 --provider mock 先离线跑）"
+                "LLM_PROVIDER=deepseek 需要 DEEPSEEK_API_KEY。已查找："
+                + describe_sources()
+                + "。可用 --env-file 指定文件，或 --provider mock 先离线跑"
             )
         return DeepSeekClient(
             api_key=api_key,

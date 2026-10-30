@@ -7,7 +7,7 @@
   "material_id": "M02",
   "review_status": "UNKNOWN",
   "risk_reason": null,
-  "reason": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）",
+  "reason": "material_get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）",
   "rule_hits": [],
   "missing_fields": [],
   "requested_slot": "2026-11-05T20:00:00+08:00",
@@ -25,7 +25,7 @@
   "decisions": [
     {
       "step": 1,
-      "action": "material.get",
+      "action": "material_get",
       "args": {
         "material_id": "M02"
       },
@@ -34,7 +34,7 @@
         "ok": false,
         "code": "SOURCE_UNAVAILABLE",
         "retryable": true,
-        "summary": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
+        "summary": "material_get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
       },
       "next": "finish"
     },
@@ -43,7 +43,7 @@
       "action": "finish",
       "args": {
         "status": "tool_error",
-        "reason": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
+        "reason": "material_get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
       },
       "rationale": "素材读不到，无法继续，如实告知而不是编造",
       "observation": null,
@@ -51,7 +51,7 @@
     }
   ],
   "llm_usage": {},
-  "message": "调用 SOURCE_UNAVAILABLE 失败，已重试 1 次：material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）。未保存任何数据。",
+  "message": "调用 SOURCE_UNAVAILABLE 失败，已重试 1 次：material_get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）。未保存任何数据。",
   "evidence": {
     "material_id": "M02",
     "rules_version": "r2026.11.1",
@@ -63,7 +63,7 @@
   "trace": [
     "prepare",
     "agent",
-    "act:material.get",
+    "act:material_get",
     "agent",
     "finalize"
   ]
