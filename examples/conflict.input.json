@@ -1,0 +1,9 @@
+{
+  "request_id": "req-conflict",
+  "user_text": "把素材 M01 排在 18:00，希望别太晚",
+  "material_id": "M01",
+  "target_date": "2026-11-05",
+  "desired_slot": "2026-11-05T18:00:00+08:00",
+  "slot_constraint": "soft",
+  "now": "2026-11-05T09:00:00+08:00"
+}

@@ -1,0 +1,68 @@
+{
+  "status": "tool_error",
+  "mode": "mock_react",
+  "finished": true,
+  "completed": false,
+  "request_id": "req-tool-failure",
+  "material_id": "M02",
+  "review_status": "UNKNOWN",
+  "risk_reason": null,
+  "reason": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）",
+  "rule_hits": [],
+  "missing_fields": [],
+  "requested_slot": "2026-11-05T20:00:00+08:00",
+  "suggested_slot": null,
+  "alternatives": [],
+  "pending_confirmations": [],
+  "draft": {
+    "saved": false
+  },
+  "notify": {},
+  "published": false,
+  "steps": 2,
+  "tool_calls": 1,
+  "max_steps": 10,
+  "decisions": [
+    {
+      "step": 1,
+      "action": "material.get",
+      "args": {
+        "material_id": "M02"
+      },
+      "rationale": "先确认素材是否存在、元数据是否可读",
+      "observation": {
+        "ok": false,
+        "code": "SOURCE_UNAVAILABLE",
+        "retryable": true,
+        "summary": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
+      },
+      "next": "finish"
+    },
+    {
+      "step": 2,
+      "action": "finish",
+      "args": {
+        "status": "tool_error",
+        "reason": "material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）"
+      },
+      "rationale": "素材读不到，无法继续，如实告知而不是编造",
+      "observation": null,
+      "next": null
+    }
+  ],
+  "message": "调用 SOURCE_UNAVAILABLE 失败，已重试 1 次：material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）。未保存任何数据。",
+  "evidence": {
+    "material_id": "M02",
+    "rules_version": "r2026.11.1",
+    "policy": "mock",
+    "audit_table": "material_review",
+    "schedule_table": "publish_schedule"
+  },
+  "trace": [
+    "prepare",
+    "agent",
+    "act:material.get",
+    "agent",
+    "finalize"
+  ]
+}

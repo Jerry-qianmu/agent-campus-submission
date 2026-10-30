@@ -1,0 +1,85 @@
+Command: python -m unittest discover -s tests -v
+Environment: 3.12.4 / langgraph mock mode
+test_accepts_utf8_bom (test_cli.CliTests.test_accepts_utf8_bom)
+Windows 记事本/PowerShell 存出的 JSON 带 BOM，不能被误判成非法输入。 ... ok
+test_bad_repeat (test_cli.CliTests.test_bad_repeat) ... ok
+test_compact_output_is_single_line (test_cli.CliTests.test_compact_output_is_single_line) ... ok
+test_decision_log_is_written (test_cli.CliTests.test_decision_log_is_written) ... ok
+test_invalid_json_object (test_cli.CliTests.test_invalid_json_object) ... ok
+test_max_steps_flag_returns_unfinished (test_cli.CliTests.test_max_steps_flag_returns_unfinished) ... ok
+test_missing_file (test_cli.CliTests.test_missing_file) ... ok
+test_normal_example (test_cli.CliTests.test_normal_example) ... ok
+test_now_override (test_cli.CliTests.test_now_override) ... ok
+test_persistent_db_dedupes_across_processes (test_cli.CliTests.test_persistent_db_dedupes_across_processes) ... ok
+test_malformed_response_raises (test_llm.HttpLLMTests.test_malformed_response_raises) ... ok
+test_parses_openai_style_payload (test_llm.HttpLLMTests.test_parses_openai_style_payload) ... ok
+test_default_constraint_is_soft (test_llm.MockLLMTests.test_default_constraint_is_soft) ... ok
+test_floor_to_hour (test_llm.MockLLMTests.test_floor_to_hour) ... ok
+test_hard_keyword_detected (test_llm.MockLLMTests.test_hard_keyword_detected) ... ok
+test_illegal_hour_in_text (test_llm.MockLLMTests.test_illegal_hour_in_text) ... ok
+test_invalid_constraint (test_llm.MockLLMTests.test_invalid_constraint) ... ok
+test_invalid_material_id_type (test_llm.MockLLMTests.test_invalid_material_id_type) ... ok
+test_invalid_slot (test_llm.MockLLMTests.test_invalid_slot) ... ok
+test_not_a_dict (test_llm.MockLLMTests.test_not_a_dict) ... ok
+test_parses_material_and_time_from_text (test_llm.MockLLMTests.test_parses_material_and_time_from_text) ... ok
+test_structured_fields_win (test_llm.MockLLMTests.test_structured_fields_win) ... ok
+test_time_only_falls_back_to_now_date (test_llm.MockLLMTests.test_time_only_falls_back_to_now_date) ... ok
+test_clean_material_passes (test_rules.RulesTests.test_clean_material_passes) ... ok
+test_field_labels_cover_all_required (test_rules.RulesTests.test_field_labels_cover_all_required) ... ok
+test_metadata_none_is_incomplete (test_rules.RulesTests.test_metadata_none_is_incomplete) ... ok
+test_missing_precedes_risk (test_rules.RulesTests.test_missing_precedes_risk)
+同时缺字段和违规时，先判信息缺失：让用户补完再谈风险。 ... ok
+test_r001_missing_title (test_rules.RulesTests.test_r001_missing_title) ... ok
+test_r002_missing_cover (test_rules.RulesTests.test_r002_missing_cover) ... ok
+test_r003_invalid_duration (test_rules.RulesTests.test_r003_invalid_duration) ... ok
+test_r004_copyright_is_medium_not_blocking (test_rules.RulesTests.test_r004_copyright_is_medium_not_blocking) ... ok
+test_r005_checks_tags_too (test_rules.RulesTests.test_r005_checks_tags_too) ... ok
+test_r005_sensitive_words_block (test_rules.RulesTests.test_r005_sensitive_words_block) ... ok
+test_r006_long_title_is_low (test_rules.RulesTests.test_r006_long_title_is_low) ... ok
+test_r007_empty_tags (test_rules.RulesTests.test_r007_empty_tags) ... ok
+test_r008_bad_format_blocks (test_rules.RulesTests.test_r008_bad_format_blocks) ... ok
+test_auto_increment (test_store.StoreTests.test_auto_increment) ... ok
+test_concurrent_writers_do_not_lose_rows (test_store.StoreTests.test_concurrent_writers_do_not_lose_rows) ... ok
+test_null_unique_column_allows_duplicates (test_store.StoreTests.test_null_unique_column_allows_duplicates)
+MySQL 唯一索引允许多个 NULL；idem_key 为空的种子行不能被判重复。 ... ok
+test_permission_denied_on_lock_is_retried (test_store.StoreTests.test_permission_denied_on_lock_is_retried)
+Windows 上锁文件处于 delete-pending 时，O_CREAT|O_EXCL 抛 PermissionError。 ... ok
+test_persistent_permission_denied_raises_lock_timeout (test_store.StoreTests.test_persistent_permission_denied_raises_lock_timeout)
+持续被拒只能是 LockTimeout，让工具层翻译成可重试的 DB_UNAVAILABLE。 ... ok
+test_rollback_leaves_no_partial_row (test_store.StoreTests.test_rollback_leaves_no_partial_row) ... ok
+test_seed_missing_creates_empty_database (test_store.StoreTests.test_seed_missing_creates_empty_database) ... ok
+test_seeded_from_seed_file (test_store.StoreTests.test_seeded_from_seed_file) ... ok
+test_transaction_persists_and_is_atomic (test_store.StoreTests.test_transaction_persists_and_is_atomic) ... ok
+test_unique_material_date (test_store.StoreTests.test_unique_material_date) ... ok
+test_action_changes_after_observing_conflict (test_workflow.WorkflowTests.test_action_changes_after_observing_conflict)
+同一素材、同一时段冲突：软性要求会改档并存草稿，硬性要求则直接收手。 ... ok
+test_cancelled_slot_is_revived_not_duplicated (test_workflow.WorkflowTests.test_cancelled_slot_is_revived_not_duplicated) ... ok
+test_decision_log_has_required_fields (test_workflow.WorkflowTests.test_decision_log_has_required_fields) ... ok
+test_duplicate_submission_creates_one_draft (test_workflow.WorkflowTests.test_duplicate_submission_creates_one_draft) ... ok
+test_every_status_is_known (test_workflow.WorkflowTests.test_every_status_is_known) ... ok
+test_hard_conflict_never_moves_slot (test_workflow.WorkflowTests.test_hard_conflict_never_moves_slot) ... ok
+test_input_object_is_not_mutated (test_workflow.WorkflowTests.test_input_object_is_not_mutated) ... ok
+test_llm_policy_drives_the_same_loop (test_workflow.WorkflowTests.test_llm_policy_drives_the_same_loop)
+用脚本化的假模型跑通「模型选动作 → 执行 → 观察 → 模型再选」。 ... ok
+test_metadata_lag_recovers_after_recheck (test_workflow.WorkflowTests.test_metadata_lag_recovers_after_recheck) ... ok
+test_missing_material_id_asks_for_it (test_workflow.WorkflowTests.test_missing_material_id_asks_for_it) ... ok
+test_missing_material_info_blocks (test_workflow.WorkflowTests.test_missing_material_info_blocks) ... ok
+test_no_desired_slot_picks_first_free (test_workflow.WorkflowTests.test_no_desired_slot_picks_first_free) ... ok
+test_normal_completes_with_draft (test_workflow.WorkflowTests.test_normal_completes_with_draft) ... ok
+test_notify_failure_degrades_without_blocking (test_workflow.WorkflowTests.test_notify_failure_degrades_without_blocking) ... ok
+test_other_material_occupies_slot (test_workflow.WorkflowTests.test_other_material_occupies_slot)
+M00 占 20:00 时，M02 要 20:00 应顺延到 21:00。 ... ok
+test_repeat_runs_do_not_publish_anything (test_workflow.WorkflowTests.test_repeat_runs_do_not_publish_anything) ... ok
+test_rule_risk_blocks (test_workflow.WorkflowTests.test_rule_risk_blocks) ... ok
+test_save_failure_is_reported_loudly (test_workflow.WorkflowTests.test_save_failure_is_reported_loudly) ... ok
+test_slot_conflict_suggests_alternative (test_workflow.WorkflowTests.test_slot_conflict_suggests_alternative)
+参考实例：M01 要 18:00，被 M00 占用，19:00 可用。 ... ok
+test_step_limit_returns_unfinished_state (test_workflow.WorkflowTests.test_step_limit_returns_unfinished_state)
+限步必须返回明确的未完成状态，而不是悄悄继续或抛异常。 ... ok
+test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test_tool_failure_is_retryable_but_still_fails) ... ok
+test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
+
+----------------------------------------------------------------------
+Ran 68 tests in 10.889s
+
+OK

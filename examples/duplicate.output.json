@@ -1,0 +1,141 @@
+{
+  "status": "completed",
+  "mode": "mock_react",
+  "finished": true,
+  "completed": true,
+  "request_id": "req-duplicate",
+  "material_id": "M02",
+  "review_status": "PASSED",
+  "risk_reason": null,
+  "reason": "审核通过且时段空闲，草稿已保存；仍未发布",
+  "rule_hits": [],
+  "missing_fields": [],
+  "requested_slot": "2026-11-05T20:00:00+08:00",
+  "suggested_slot": "2026-11-05T20:00:00+08:00",
+  "alternatives": [],
+  "pending_confirmations": [],
+  "draft": {
+    "saved": true,
+    "draft_id": 2,
+    "status": "DRAFT",
+    "deduped": true,
+    "reused": false
+  },
+  "notify": {
+    "ok": true,
+    "event": "draft_saved",
+    "dedupe_key": "M02:draft_saved:2026-11-05T20:00:00+08:00",
+    "deduped": true,
+    "degraded": false
+  },
+  "published": false,
+  "steps": 5,
+  "tool_calls": 4,
+  "max_steps": 10,
+  "decisions": [
+    {
+      "step": 1,
+      "action": "material.get",
+      "args": {
+        "material_id": "M02"
+      },
+      "rationale": "先确认素材是否存在、元数据是否可读",
+      "observation": {
+        "ok": true,
+        "code": null,
+        "retryable": false,
+        "summary": "素材 M02 存在，最近审核状态 PASSED"
+      },
+      "next": "audit.check"
+    },
+    {
+      "step": 2,
+      "action": "audit.check",
+      "args": {
+        "material_id": "M02"
+      },
+      "rationale": "素材已读到（或刚补查过），先跑规则审核",
+      "observation": {
+        "ok": true,
+        "code": null,
+        "retryable": false,
+        "summary": "审核结论 PASSED，无风险"
+      },
+      "next": "slot.query"
+    },
+    {
+      "step": 3,
+      "action": "slot.query",
+      "args": {
+        "date": "2026-11-05",
+        "material_id": "M02"
+      },
+      "rationale": "审核通过，查目标日期的占用情况再决定档位",
+      "observation": {
+        "ok": true,
+        "code": null,
+        "retryable": false,
+        "summary": "占用：18:00(M00)；可用 13 个时段，最早 09:00"
+      },
+      "next": "schedule.save_draft"
+    },
+    {
+      "step": 4,
+      "action": "schedule.save_draft",
+      "args": {
+        "material_id": "M02",
+        "slot": "2026-11-05T20:00:00+08:00"
+      },
+      "rationale": "目标时段空闲，直接落草稿",
+      "observation": {
+        "ok": true,
+        "code": null,
+        "retryable": false,
+        "summary": "幂等命中，复用已有草稿 #2（DRAFT）"
+      },
+      "next": "finish"
+    },
+    {
+      "step": 5,
+      "action": "finish",
+      "args": {
+        "status": "completed",
+        "reason": "审核通过且时段空闲，草稿已保存；仍未发布",
+        "suggested_slot": "2026-11-05T20:00:00+08:00"
+      },
+      "rationale": "审核通过且时段空闲，草稿已保存；仍未发布",
+      "observation": null,
+      "next": null
+    }
+  ],
+  "message": "已保存草稿（草稿ID 2，状态 DRAFT），未发布。",
+  "evidence": {
+    "material_id": "M02",
+    "rules_version": "r2026.11.1",
+    "policy": "mock",
+    "audit_table": "material_review",
+    "schedule_table": "publish_schedule"
+  },
+  "trace": [
+    "prepare",
+    "agent",
+    "act:material.get",
+    "agent",
+    "act:audit.check",
+    "agent",
+    "act:slot.query",
+    "agent",
+    "act:schedule.save_draft",
+    "agent",
+    "finalize"
+  ],
+  "deduplication": {
+    "repeat": 2,
+    "draft_ids": [
+      2,
+      2
+    ],
+    "single_draft": true,
+    "deduped_on_last_try": true
+  }
+}

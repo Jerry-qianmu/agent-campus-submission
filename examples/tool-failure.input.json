@@ -1,0 +1,10 @@
+{
+  "request_id": "req-tool-failure",
+  "user_text": "把素材 M02 排在 2026-11-05 20:00",
+  "material_id": "M02",
+  "desired_slot": "2026-11-05T20:00:00+08:00",
+  "simulate": {
+    "material_lookup": true
+  },
+  "now": "2026-11-05T09:00:00+08:00"
+}

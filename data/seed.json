@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "sequences": {
+    "material_review": 1,
+    "publish_schedule": 1,
+    "notify_log": 0
+  },
+  "tables": {
+    "materials": [
+      {
+        "id": "M00",
+        "metadata": {
+          "title": "晨间咖啡日常",
+          "cover_url": "https://cdn.demo/cover/m00.jpg",
+          "file_url": "https://cdn.demo/video/m00.mp4",
+          "format": "mp4",
+          "duration_sec": 38,
+          "copyright": "original",
+          "tags": ["生活", "咖啡"],
+          "author": "内容组-李四"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M01",
+        "metadata": {
+          "title": "秋日限定甜品探店",
+          "cover_url": "https://cdn.demo/cover/m01.jpg",
+          "file_url": "https://cdn.demo/video/m01.mp4",
+          "format": "mp4",
+          "duration_sec": 45,
+          "copyright": "original",
+          "tags": ["美食", "探店"],
+          "author": "内容组-张三"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M02",
+        "metadata": {
+          "title": "通勤穿搭三件套",
+          "cover_url": "https://cdn.demo/cover/m02.jpg",
+          "file_url": "https://cdn.demo/video/m02.mp4",
+          "format": "mp4",
+          "duration_sec": 60,
+          "copyright": "original",
+          "tags": ["穿搭", "职场"],
+          "author": "内容组-王五"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M03",
+        "metadata": {
+          "title": "夜市小吃合集",
+          "file_url": "https://cdn.demo/video/m03.mp4",
+          "format": "mp4",
+          "duration_sec": 72,
+          "copyright": "original",
+          "tags": ["美食", "夜市"],
+          "author": "内容组-张三"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M04",
+        "metadata": {
+          "title": "全网最低价零食开箱",
+          "cover_url": "https://cdn.demo/cover/m04.jpg",
+          "file_url": "https://cdn.demo/video/m04.mp4",
+          "format": "mp4",
+          "duration_sec": 55,
+          "copyright": "original",
+          "tags": ["零食", "测评"],
+          "author": "内容组-赵六"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M05",
+        "metadata": {
+          "title": "周末露营流水账",
+          "cover_url": "https://cdn.demo/cover/m05.jpg",
+          "file_url": "https://cdn.demo/video/m05.mp4",
+          "format": "mp4",
+          "duration_sec": 80,
+          "copyright": "original",
+          "tags": ["户外", "露营"],
+          "author": "内容组-李四"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M06",
+        "metadata": {
+          "title": "租房改造前后对比",
+          "cover_url": "https://cdn.demo/cover/m06.jpg",
+          "file_url": "https://cdn.demo/video/m06.mp4",
+          "format": "mp4",
+          "duration_sec": 95,
+          "tags": ["家居"],
+          "author": "内容组-王五"
+        },
+        "synthetic": true
+      },
+      {
+        "id": "M07",
+        "metadata": {
+          "title": "手冲咖啡入门",
+          "cover_url": "https://cdn.demo/cover/m07.jpg",
+          "file_url": "https://cdn.demo/video/m07.mp4",
+          "format": "mp4",
+          "duration_sec": 65,
+          "copyright": "original",
+          "tags": ["咖啡", "教程"],
+          "author": "内容组-李四"
+        },
+        "synthetic": true
+      }
+    ],
+    "material_review": [
+      {
+        "id": 1,
+        "material_id": "M00",
+        "status": "PASSED",
+        "metadata": {
+          "title": "晨间咖啡日常",
+          "cover_url": "https://cdn.demo/cover/m00.jpg",
+          "file_url": "https://cdn.demo/video/m00.mp4",
+          "format": "mp4",
+          "duration_sec": 38,
+          "copyright": "original",
+          "tags": ["生活", "咖啡"],
+          "author": "内容组-李四"
+        },
+        "release_date": null,
+        "risk_reason": null,
+        "rules_version": "r2026.11.1",
+        "create_time": "2026-11-04T10:00:00+08:00",
+        "update_time": "2026-11-04T10:00:00+08:00"
+      }
+    ],
+    "publish_schedule": [
+      {
+        "id": 1,
+        "date": "2026-11-05T18:00:00+08:00",
+        "material_id": "M00",
+        "status": "DRAFT",
+        "confirm_time": null,
+        "idem_key": null,
+        "create_time": "2026-11-04T10:05:00+08:00",
+        "update_time": "2026-11-04T10:05:00+08:00"
+      }
+    ],
+    "notify_log": []
+  }
+}

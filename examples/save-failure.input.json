@@ -1,0 +1,10 @@
+{
+  "request_id": "req-save-failure",
+  "user_text": "把素材 M05 排在 2026-11-05 21:00",
+  "material_id": "M05",
+  "desired_slot": "2026-11-05T21:00:00+08:00",
+  "simulate": {
+    "save_failure": "db_unavailable"
+  },
+  "now": "2026-11-05T09:00:00+08:00"
+}
