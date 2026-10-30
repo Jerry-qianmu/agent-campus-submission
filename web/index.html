@@ -31,7 +31,10 @@
 
   <main class="layout">
     <section class="panel">
-      <h2>1 · 选素材 <span class="muted">（点标题看详情）</span></h2>
+      <div class="section-head">
+        <h2>1 · 选素材 <span class="muted">（点标题看详情）</span></h2>
+        <button id="new-material" class="btn small">+ 新增素材</button>
+      </div>
       <div id="materials" class="materials"></div>
 
       <h2>2 · 选时段</h2>
@@ -95,6 +98,36 @@
   </main>
 
   <div id="toast" class="toast" hidden></div>
+
+  <div id="material-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h3 id="modal-title">新增素材</h3>
+      <div class="form-grid">
+        <label class="wide">标题 <input id="f-title" maxlength="60" placeholder="必填" /></label>
+        <label>时长（秒）<input id="f-duration" type="number" min="1" step="1" /></label>
+        <label>格式
+          <select id="f-format">
+            <option value="mp4">mp4</option>
+            <option value="mov">mov</option>
+            <option value="m4v">m4v</option>
+            <option value="jpg">jpg</option>
+            <option value="png">png</option>
+          </select>
+        </label>
+        <label>版权来源 <input id="f-copyright" placeholder="original / licensed" /></label>
+        <label>作者 <input id="f-author" placeholder="内容组-某某" /></label>
+        <label class="wide">封面地址 <input id="f-cover" placeholder="https://..." /></label>
+        <label class="wide">素材文件地址 <input id="f-file" placeholder="https://..." /></label>
+        <label class="wide">标签（逗号分隔）<input id="f-tags" placeholder="美食, 探店" /></label>
+      </div>
+      <p id="modal-error" class="error" hidden></p>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn">取消</button>
+        <button id="modal-save" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

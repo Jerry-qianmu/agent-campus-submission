@@ -1,7 +1,7 @@
 # 测试与评估
 
 本页记录离线流程验证 + 一次真实模型（DeepSeek）联调。
-离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 136 tests … OK`。
+离线部分见 [test-results.txt](../examples/test-results.txt)：`Ran 145 tests … OK`。
 
 ## 必须验收的六类
 
@@ -30,6 +30,10 @@
 | 达到步数上限 | `--max-steps 2` | `step_limit_reached`，`finished=false`，不落库 | 通过 |
 | 同素材再排一个时段 | 先排 20:00，再要 21:00 | `blocked` + `existing_schedule` 指向原草稿，表里仍只有一行 | 通过 |
 | 内容重复 | M08 与 M09 同一文件 | `blocked`，`review_status=RISK`，`risk_reason` 含 R009，`duplicate_of=[M09]` | 通过 |
+| 新增素材 | 完整元数据 | 自动编号 M10，写入即审核，列表可见 | 通过 |
+| 新增重复素材 | 与已有素材同文件 | 409 拒绝，提示对方 ID | 通过 |
+| 修改素材 | 只改时长 | 其它字段保留，重跑审核 | 通过 |
+| 删除素材 | 无排期 | 200，审核记录一并删除；有有效排期则 409 | 通过 |
 
 ## 执行路径记录
 
@@ -63,7 +67,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `400 Invalid 'tools[0].function.name'` | 工具名带点号，不满足 `^[a-zA-Z0-9_-]+$` | 全部改下划线 | `test_clients` + 联调复跑 |
 | `needs_confirmation` 但 `draft.saved=false` | 模型不存草稿就收尾 | prompt 规则 7 + `finalize` 降级为 `blocked` | `test_finish_without_draft_is_downgraded_to_blocked` |
 
-## 单元/集成测试分布（共 136）
+## 单元/集成测试分布（共 145）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
@@ -74,7 +78,7 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | `tests/test_workflow.py` | 30 | 六类验收 + 补查 + 降级 + 复活 + 限步 + 决策日志 + 假模型循环 + 模型失败降级 + 参数防护 + 未落草稿不得声称完成 |
 | `tests/test_env.py` | 11 | `.env` ?????/??/export/BOM/CRLF??`.env` ?????????????? |
 | `tests/test_env.py` | 11 | `.env` 解析（注释/引号/export/BOM/CRLF）、`.env` 覆盖进程变量、缺失文件无操作 |
-| `tests/test_server.py` | 22 | Web 门面（bootstrap/slots/run/confirm/cancel/drafts/material 详情 + 冲突扫描）+ HTTP 路由、静态资源、404/400 |
+| `tests/test_server.py` | 31 | Web 门面（bootstrap/slots/run/confirm/cancel/drafts/material 详情 + 冲突扫描 + 素材增删改查）+ HTTP 路由、201/409/400、静态资源 |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 ## 可自动化的硬断言

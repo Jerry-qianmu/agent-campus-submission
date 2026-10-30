@@ -15,6 +15,10 @@ class LockTimeout(AgentError):
     """等待数据库文件锁超时。"""
 
 
+class Conflict(AgentError):
+    """与现有数据/状态冲突（内容重复、已有排期等），HTTP 层映射为 409。"""
+
+
 class UniqueViolation(AgentError):
     """违反唯一约束，语义等价于 MySQL 的 Duplicate entry。"""
 

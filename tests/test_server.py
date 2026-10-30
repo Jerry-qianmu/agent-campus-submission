@@ -158,6 +158,95 @@ class AppTests(unittest.TestCase):
         with self.assertRaises(InvalidInput):
             self.app.cancel(draft_id)
 
+    # -- 素材增删改查 ----------------------------------------------------
+    def test_create_material_runs_audit(self):
+        created = self.app.create_material(
+            {
+                "title": "新品开箱-便携榨汁机",
+                "file_url": "https://cdn.demo/video/m10.mp4",
+                "cover_url": "https://cdn.demo/cover/m10.jpg",
+                "format": "mp4",
+                "duration_sec": 36,
+                "copyright": "original",
+                "tags": "家电, 开箱",
+            }
+        )
+        self.assertEqual(created["id"], "M10")
+        self.assertEqual(created["review"]["status"], "PASSED")
+        self.assertEqual(created["metadata"]["tags"], ["家电", "开箱"])
+        ids = [item["id"] for item in self.app.bootstrap()["materials"]]
+        self.assertIn("M10", ids)
+
+    def test_create_rejects_duplicate_content(self):
+        from src.errors import Conflict
+
+        self.app.create_material(
+            {"title": "A", "file_url": "https://cdn.demo/video/m10.mp4", "duration_sec": 30}
+        )
+        with self.assertRaises(Conflict) as caught:
+            self.app.create_material(
+                {"title": "B", "file_url": "https://cdn.demo/video/m10.mp4", "duration_sec": 30}
+            )
+        self.assertIn("M10", str(caught.exception))
+
+    def test_create_requires_title_and_valid_duration(self):
+        from src.errors import InvalidInput
+
+        with self.assertRaises(InvalidInput):
+            self.app.create_material({"title": "  "})
+        with self.assertRaises(InvalidInput):
+            self.app.create_material({"title": "x", "duration_sec": 0})
+        with self.assertRaises(InvalidInput):
+            self.app.create_material({"title": "x", "duration_sec": "三十秒"})
+
+    def test_update_merges_and_reaudits(self):
+        created = self.app.create_material(
+            {
+                "title": "待改",
+                "file_url": "https://cdn.demo/video/m10.mp4",
+                "cover_url": "https://cdn.demo/cover/m10.jpg",
+                "duration_sec": 30,
+                "format": "mp4",
+            }
+        )
+        updated = self.app.update_material(created["id"], {"duration_sec": 42})
+        self.assertEqual(updated["title"], "待改")  # 没传的字段保留
+        self.assertEqual(updated["metadata"]["duration_sec"], 42)
+        self.assertTrue(updated["metadata"]["cover_url"])
+        self.assertEqual(updated["review"]["status"], "PASSED")
+
+        cleared = self.app.update_material(created["id"], {"cover_url": ""})
+        self.assertIsNone(cleared["metadata"].get("cover_url"))  # 传空 = 清除
+        self.assertEqual(cleared["review"]["status"], "INCOMPLETE")
+
+    def test_update_blocks_when_material_has_schedule(self):
+        from src.errors import Conflict
+
+        self.app.run({"material_id": "M01", "date": "2026-11-05", "hour": 18})
+        with self.assertRaises(Conflict):
+            self.app.update_material("M01", {"title": "改个名"})
+
+    def test_delete_blocks_when_scheduled_then_succeeds_after_cancel(self):
+        from src.errors import Conflict, InvalidInput
+
+        result = self.app.run({"material_id": "M02", "date": "2026-11-05", "hour": 20})
+        with self.assertRaises(Conflict):
+            self.app.delete_material("M02")
+
+        self.app.cancel(result["draft"]["draft_id"])
+        deleted = self.app.delete_material("M02")
+        self.assertEqual(deleted["deleted"], "M02")
+        self.assertEqual(deleted["removed_schedules"], 1)
+        self.assertNotIn("M02", [item["id"] for item in self.app.bootstrap()["materials"]])
+        with self.assertRaises(InvalidInput):
+            self.app.material_detail("M02")
+
+    def test_delete_unknown_material(self):
+        from src.errors import InvalidInput
+
+        with self.assertRaises(InvalidInput):
+            self.app.delete_material("M99")
+
 
 class HttpTests(unittest.TestCase):
     """起一个真服务器，验证路由、静态资源与错误码。"""
@@ -192,6 +281,60 @@ class HttpTests(unittest.TestCase):
         )
         with urlopen(request, timeout=30) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
+
+    def _request(self, method, path, payload):
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method=method,
+        )
+        with urlopen(request, timeout=30) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+
+    def test_material_crud_endpoints(self):
+        payload = {
+            "metadata": {
+                "title": "接口新增素材",
+                "file_url": "https://cdn.demo/video/api1.mp4",
+                "duration_sec": 25,
+                "format": "mp4",
+            }
+        }
+        status, created = self._request("POST", "/api/materials", payload)
+        self.assertEqual(status, 201)
+        material_id = created["id"]
+
+        status, updated = self._request(
+            "PUT", f"/api/materials/{material_id}", {"metadata": {"duration_sec": 26}}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["metadata"]["duration_sec"], 26)
+        self.assertEqual(updated["title"], "接口新增素材")
+
+        status, deleted = self._request("DELETE", f"/api/materials/{material_id}", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(deleted["ok"])
+
+        _, body = self._get("/api/bootstrap")
+        self.assertNotIn(material_id, [item["id"] for item in json.loads(body)["materials"]])
+
+    def test_material_create_conflict_and_validation(self):
+        payload = {
+            "metadata": {
+                "title": "重复素材",
+                "file_url": "https://cdn.demo/video/m01.mp4",
+                "duration_sec": 45,
+                "format": "mp4",
+            }
+        }
+        with self.assertRaises(HTTPError) as caught:
+            self._request("POST", "/api/materials", payload)  # 与种子 M01 同文件
+        self.assertEqual(caught.exception.code, 409)
+
+        with self.assertRaises(HTTPError) as caught:
+            self._request("POST", "/api/materials", {"metadata": {"title": ""}})
+        self.assertEqual(caught.exception.code, 400)
 
     def test_index_and_assets(self):
         status, body = self._get("/")

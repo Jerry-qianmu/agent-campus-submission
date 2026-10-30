@@ -38,9 +38,32 @@ class Repository:
     def get_material(self, material_id: str) -> dict[str, Any] | None:
         return self.session.select_one("materials", id=material_id)
 
+    def list_materials(self) -> list[dict[str, Any]]:
+        return list(self.session.select("materials"))
+
+    def insert_material(self, material_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        return self.session.insert(
+            "materials",
+            {"id": material_id, "metadata": metadata, "synthetic": True},
+        )
+
+    def update_material(self, material_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        return self.session.update("materials", material_id, metadata=metadata)
+
+    def delete_material(self, material_id: str) -> None:
+        rows = self.session.rows("materials")
+        kept = [row for row in rows if row["id"] != material_id]
+        if len(kept) == len(rows):
+            raise KeyError(f"materials has no row with id={material_id!r}")
+        rows[:] = kept
+
     # -- 素材审核 ----------------------------------------------------------
     def get_review(self, material_id: str) -> dict[str, Any] | None:
         return self.session.select_one("material_review", material_id=material_id)
+
+    def delete_review(self, material_id: str) -> None:
+        rows = self.session.rows("material_review")
+        rows[:] = [row for row in rows if row["material_id"] != material_id]
 
     def upsert_review(
         self,
@@ -101,6 +124,17 @@ class Repository:
             for row in self.session.select("publish_schedule", material_id=material_id)
             if row["status"] in ACTIVE_SCHEDULE_STATUS
         ]
+
+    def schedules_of(self, material_id: str) -> list[dict[str, Any]]:
+        """该素材的全部排期行（含 CANCELLED），删除素材前用来判断能否删。"""
+        return list(self.session.select("publish_schedule", material_id=material_id))
+
+    def delete_schedules_of(self, material_id: str) -> int:
+        rows = self.session.rows("publish_schedule")
+        kept = [row for row in rows if row["material_id"] != material_id]
+        removed = len(rows) - len(kept)
+        rows[:] = kept
+        return removed
 
     def insert_schedule(self, row: dict[str, Any]) -> dict[str, Any]:
         stamped = {"create_time": _now_iso(), "update_time": _now_iso(), **row}

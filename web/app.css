@@ -110,9 +110,12 @@ h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
 .slot.closed { color: #565d70; cursor: not-allowed; }
 .slot.selected { border-color: var(--accent); background: rgba(91, 140, 255, .16); color: #fff; }
 
-input[type="date"], select, textarea, input[type="number"] {
+input:not([type="radio"]):not([type="checkbox"]), select, textarea {
   background: #10131a; color: var(--text); border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+input:not([type="radio"]):not([type="checkbox"]):focus, select:focus, textarea:focus {
+  outline: none; border-color: rgba(91, 140, 255, .6);
 }
 textarea { width: 100%; resize: vertical; }
 .field { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
@@ -233,3 +236,26 @@ details.trace pre { margin: 8px 0 0; font-size: 11px; color: #9aa3b8; overflow: 
 .sched-row .slot { font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #cfd4e2; }
 .warn-box { border: 1px solid rgba(248, 113, 113, .35); background: rgba(248, 113, 113, .08); border-radius: 9px; padding: 10px 12px; font-size: 12.5px; margin-top: 10px; }
 .ok-box { border: 1px solid rgba(52, 211, 153, .3); background: rgba(52, 211, 153, .07); border-radius: 9px; padding: 10px 12px; font-size: 12.5px; margin-top: 10px; }
+
+/* ---------- 分组标题 + 新增按钮 ---------- */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.section-head h2 { margin: 4px 0 10px; }
+.btn.danger { color: #ffb4b4; border-color: rgba(248, 113, 113, .4); }
+.btn.danger:hover { background: rgba(248, 113, 113, .12); }
+
+/* ---------- 弹窗表单 ---------- */
+.modal { position: fixed; inset: 0; background: rgba(8, 10, 16, .62); display: grid; place-items: center; z-index: 60; padding: 20px; }
+/* display:grid 会盖掉浏览器默认的 [hidden]{display:none}，必须显式补回来 */
+.modal[hidden] { display: none; }
+.modal-card {
+  width: min(620px, 100%); background: linear-gradient(180deg, #1b202b, #171a23);
+  border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+.modal-card h3 { margin: 0 0 14px; font-size: 15px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.form-grid .wide { grid-column: 1 / -1; }
+.form-grid input, .form-grid select { width: 100%; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal-actions .btn.primary { width: auto; margin: 0; padding: 8px 18px; }

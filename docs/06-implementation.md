@@ -397,7 +397,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，136 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，145 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -405,6 +405,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 规则 | `tests/test_rules.py` | R001–R009 逐条、缺失优先于风险、metadata 为 None、指纹稳定性 |
 | 意图 | `tests/test_llm.py` | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文解析 |
 | 流程 | `tests/test_workflow.py` | 六类验收 + 补查恢复 + 提醒降级 + 取消复活 + 限步未完成 + 决策日志字段 + 假模型驱动循环 |
+| Web | `tests/test_server.py` | 门面（bootstrap/slots/drafts/素材增删改查）+ HTTP 路由与 201/409/400 |
 | CLI | `tests/test_cli.py` | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 每个用例一份独立临时库（`tests/support.py`），互不污染；`examples/*.output.json` 由 `python -m scripts.regen_examples` 真实跑出来，不是手写。
@@ -425,7 +426,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 128 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 145 个测试。
 
 ---
 
@@ -449,6 +450,9 @@ src/server.py  (ThreadingHTTPServer)
 | `POST /api/run` | 跑一次 ReAct | 返回与 CLI 相同的 JSON（含 `decisions`） |
 | `POST /api/confirm` | `schedule_confirm`，DRAFT → CONFIRMED | 界面「确认」按钮 |
 | `POST /api/cancel` | `schedule_cancel`，DRAFT → CANCELLED 并释放时段 | 界面「取消」按钮 |
+| `POST /api/materials` | 新建素材（白名单字段 + 校验），写库后立刻审核 | 201 / 409 内容重复 / 400 参数 |
+| `PUT /api/materials/{id}` | 合并式更新（不传保留、传空清除），更新后重审 | 有有效排期时 409 |
+| `DELETE /api/materials/{id}` | 删除素材 + 审核记录；CANCELLED 排期一并清掉 | 有有效排期时 409 |
 | `POST /api/reset` | 删除运行库并从 `data/seed.json` 重建 | 演示用 |
 
 **冲突怎么判定**：`publish_schedule` 只有 `(material_id, date)` 唯一键，跨素材同档的「容量=1」是应用层校验

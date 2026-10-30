@@ -85,6 +85,11 @@ test_cannot_cancel_confirmed_draft (test_server.AppTests.test_cannot_cancel_conf
 test_confirm_flips_status_but_stays_draft (test_server.AppTests.test_confirm_flips_status_but_stays_draft) ... ok
 test_conflict_scan_detects_duplicate_slot (test_server.AppTests.test_conflict_scan_detects_duplicate_slot)
 容量是应用层校验，库里没有跨素材唯一键；直接插两条应被扫描出来。 ... ok
+test_create_material_runs_audit (test_server.AppTests.test_create_material_runs_audit) ... ok
+test_create_rejects_duplicate_content (test_server.AppTests.test_create_rejects_duplicate_content) ... ok
+test_create_requires_title_and_valid_duration (test_server.AppTests.test_create_requires_title_and_valid_duration) ... ok
+test_delete_blocks_when_scheduled_then_succeeds_after_cancel (test_server.AppTests.test_delete_blocks_when_scheduled_then_succeeds_after_cancel) ... ok
+test_delete_unknown_material (test_server.AppTests.test_delete_unknown_material) ... ok
 test_drafts_lists_all_rows (test_server.AppTests.test_drafts_lists_all_rows) ... ok
 test_hard_constraint_does_not_save (test_server.AppTests.test_hard_constraint_does_not_save) ... ok
 test_invalid_provider_rejected (test_server.AppTests.test_invalid_provider_rejected) ... ok
@@ -96,10 +101,14 @@ test_missing_hour_means_no_slot (test_server.AppTests.test_missing_hour_means_no
 test_reset_restores_seed (test_server.AppTests.test_reset_restores_seed) ... ok
 test_run_conflict_saves_draft (test_server.AppTests.test_run_conflict_saves_draft) ... ok
 test_slots_marks_seed_occupancy (test_server.AppTests.test_slots_marks_seed_occupancy) ... ok
+test_update_blocks_when_material_has_schedule (test_server.AppTests.test_update_blocks_when_material_has_schedule) ... ok
+test_update_merges_and_reaudits (test_server.AppTests.test_update_merges_and_reaudits) ... ok
 test_bad_payload_returns_400 (test_server.HttpTests.test_bad_payload_returns_400) ... ok
 test_drafts_and_material_endpoints (test_server.HttpTests.test_drafts_and_material_endpoints) ... ok
 test_health (test_server.HttpTests.test_health) ... ok
 test_index_and_assets (test_server.HttpTests.test_index_and_assets) ... ok
+test_material_create_conflict_and_validation (test_server.HttpTests.test_material_create_conflict_and_validation) ... ok
+test_material_crud_endpoints (test_server.HttpTests.test_material_crud_endpoints) ... ok
 test_material_detail_unknown_returns_400 (test_server.HttpTests.test_material_detail_unknown_returns_400) ... ok
 test_run_and_bootstrap (test_server.HttpTests.test_run_and_bootstrap) ... ok
 test_unknown_route_returns_404 (test_server.HttpTests.test_unknown_route_returns_404) ... ok
@@ -157,6 +166,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 136 tests in 12.049s
+Ran 145 tests in 12.339s
 
 OK

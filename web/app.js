@@ -382,6 +382,8 @@ function renderDetail(data) {
     ${conflictBox}
     <div class="row" style="margin-top:14px">
       <button class="btn small" data-fill="${esc(data.id)}">用这个素材排期</button>
+      <button class="btn small" data-edit="${esc(data.id)}">编辑</button>
+      <button class="btn small danger" data-delete="${esc(data.id)}">删除</button>
       <button class="btn small" data-refresh="${esc(data.id)}">刷新</button>
     </div>`;
 }
@@ -403,6 +405,112 @@ function wireDetail(data) {
   };
   const refresh = box.querySelector("[data-refresh]");
   if (refresh) refresh.onclick = () => loadMaterialDetail(data.id);
+  const edit = box.querySelector("[data-edit]");
+  if (edit) edit.onclick = () => openMaterialModal({ id: data.id, metadata: data.metadata });
+  const remove = box.querySelector("[data-delete]");
+  if (remove) remove.onclick = () => deleteMaterial(data.id);
+}
+
+/* ---------- 素材新增 / 编辑 / 删除 ---------- */
+let editingId = null;
+
+function openMaterialModal(material) {
+  editingId = material ? material.id : null;
+  $("modal-title").textContent = material ? `编辑 ${material.id}` : "新增素材";
+  const meta = material ? material.metadata || {} : {};
+  $("f-title").value = meta.title || "";
+  $("f-duration").value = meta.duration_sec || "";
+  $("f-format").value = meta.format || "mp4";
+  $("f-copyright").value = meta.copyright || "";
+  $("f-author").value = meta.author || "";
+  $("f-cover").value = meta.cover_url || "";
+  $("f-file").value = meta.file_url || "";
+  $("f-tags").value = (meta.tags || []).join(", ");
+  $("modal-error").hidden = true;
+  $("material-modal").hidden = false;
+  $("f-title").focus();
+}
+
+function closeMaterialModal() {
+  $("material-modal").hidden = true;
+  editingId = null;
+}
+
+function showModalError(message) {
+  const box = $("modal-error");
+  box.textContent = message;
+  box.hidden = false;
+}
+
+async function submitMaterial() {
+  const durationRaw = $("f-duration").value.trim();
+  const payload = {
+    metadata: {
+      title: $("f-title").value.trim(),
+      duration_sec: durationRaw ? Number(durationRaw) : null,
+      format: $("f-format").value,
+      copyright: $("f-copyright").value.trim(),
+      author: $("f-author").value.trim(),
+      cover_url: $("f-cover").value.trim(),
+      file_url: $("f-file").value.trim(),
+      tags: $("f-tags").value.trim(),
+    },
+  };
+  const isEdit = Boolean(editingId);
+  const url = isEdit ? `/api/materials/${encodeURIComponent(editingId)}` : "/api/materials";
+  const button = $("modal-save");
+  button.disabled = true;
+  try {
+    const saved = await api(url, {
+      method: isEdit ? "PUT" : "POST",
+      body: JSON.stringify(payload),
+    });
+    closeMaterialModal();
+    toast(
+      isEdit
+        ? `已保存 ${saved.id}（审核 ${saved.review.status}）`
+        : `已新增 ${saved.id}（审核 ${saved.review.status}）`
+    );
+    await refreshAfterMaterialChange(saved.id);
+  } catch (error) {
+    showModalError(error.message); // 409 内容重复 / 400 参数错误都留在这里展示
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function deleteMaterial(materialId) {
+  if (!confirm(`删除素材 ${materialId}？审核记录会一并删除；有有效排期的素材不允许删。`)) return;
+  try {
+    await api(`/api/materials/${encodeURIComponent(materialId)}`, { method: "DELETE" });
+    toast(`已删除 ${materialId}`);
+    if (state.materialId === materialId) state.materialId = null;
+    if (state.detailId === materialId) state.detailId = null;
+    state.bootstrap = await api("/api/bootstrap");
+    renderMaterials();
+    await loadDrafts();
+    const first = state.bootstrap.materials[0];
+    if (first) {
+      await openMaterial(first.id);
+    } else {
+      const box = $("material-detail");
+      box.className = "empty";
+      box.textContent = "素材已清空，点「+ 新增素材」添加。";
+    }
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+async function refreshAfterMaterialChange(materialId) {
+  state.bootstrap = await api("/api/bootstrap");
+  if (materialId) state.materialId = materialId;
+  renderMaterials();
+  await loadDrafts();
+  if (materialId) {
+    switchTab("material");
+    await loadMaterialDetail(materialId);
+  }
 }
 
 /* ---------- 动作 ---------- */
@@ -551,6 +659,15 @@ async function init(isReset = false) {
 function bindEvents() {
   $("run").onclick = runAgent;
   $("reset").onclick = resetData;
+  $("new-material").onclick = () => openMaterialModal(null);
+  $("modal-cancel").onclick = closeMaterialModal;
+  $("modal-save").onclick = submitMaterial;
+  $("material-modal").onclick = (event) => {
+    if (event.target.id === "material-modal") closeMaterialModal();
+  };
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("material-modal").hidden) closeMaterialModal();
+  });
   $("date").onchange = async () => {
     state.date = $("date").value;
     state.hour = null;
@@ -580,6 +697,10 @@ function bindEvents() {
     }
     const tabParam = params.get("tab");
     if (["result", "drafts", "material"].includes(tabParam)) switchTab(tabParam);
+    if (params.get("new") === "1") {
+      switchTab("material");
+      openMaterialModal(null);
+    }
 
     await autoRunFromQuery();
   } catch (error) {

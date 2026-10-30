@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import webbrowser
@@ -34,12 +35,12 @@ from urllib.parse import parse_qs, urlparse
 
 from .clients import ChatError
 from .env import load_dotenv
-from .errors import AgentError, InvalidInput
+from .errors import AgentError, Conflict, InvalidInput
 from .graph import MAX_STEPS_DEFAULT, run_request
 from .registry import duplicate_materials
 from .repository import Repository
 from .store import JsonDatabase
-from .tools import schedule_cancel, schedule_confirm, slot_query
+from .tools import audit_check, schedule_cancel, schedule_confirm, slot_query
 from .util import TZ, content_fingerprint, parse_datetime, to_iso
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,96 @@ ALLOWED_FAULTS = {
     "save_failure": {"save_failure": "db_unavailable"},
     "notify_failure": {"notify_failure": True},
 }
+
+# 允许写入的元数据字段（白名单：不给模型/前端随便塞字段）
+EDITABLE_METADATA_FIELDS = (
+    "title",
+    "cover_url",
+    "file_url",
+    "format",
+    "duration_sec",
+    "copyright",
+    "tags",
+    "author",
+)
+MATERIAL_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+
+
+def _clean_metadata(
+    payload: dict[str, Any], base: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """校验并归一化素材元数据。
+
+    合并语义（PATCH）：
+      字段不出现  → 保留原值（base）
+      字段传 null / 空字符串 → 清除该字段
+      字段有值    → 覆盖
+    这样只改标题不会把封面弄丢；要清空某字段就显式传空。
+    """
+    raw = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else payload
+    if not isinstance(raw, dict):
+        raise InvalidInput("metadata 必须是对象")
+
+    metadata: dict[str, Any] = dict(base or {})
+    for key in EDITABLE_METADATA_FIELDS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if value is None or (isinstance(value, str) and not value.strip()):
+            metadata.pop(key, None)
+            continue
+        metadata[key] = value
+
+    title = str(metadata.get("title") or "").strip()
+    if not title:
+        raise InvalidInput("标题必填")
+    metadata["title"] = title
+
+    if "duration_sec" in metadata:
+        try:
+            duration = int(metadata["duration_sec"])
+        except (TypeError, ValueError) as exc:
+            raise InvalidInput("时长必须是整数秒") from exc
+        if duration <= 0:
+            raise InvalidInput("时长必须大于 0")
+        metadata["duration_sec"] = duration
+
+    if "tags" in metadata:
+        tags = metadata["tags"]
+        if isinstance(tags, str):
+            tags = re.split(r"[,，、\s]+", tags)
+        if not isinstance(tags, list):
+            raise InvalidInput("标签必须是数组或逗号分隔的字符串")
+        metadata["tags"] = [str(tag).strip() for tag in tags if str(tag).strip()]
+        if not metadata["tags"]:
+            metadata.pop("tags")
+
+    for key in ("cover_url", "file_url", "format", "copyright", "author"):
+        if key in metadata:
+            metadata[key] = str(metadata[key]).strip()
+    return metadata
+
+
+def _find_duplicate(
+    materials: list[dict[str, Any]], metadata: dict[str, Any], exclude: str | None = None
+) -> str | None:
+    """按内容指纹找重复素材，返回对方 ID。"""
+    fingerprint = content_fingerprint(metadata)
+    for row in materials:
+        if row["id"] == exclude:
+            continue
+        if content_fingerprint(dict(row.get("metadata") or {})) == fingerprint:
+            return row["id"]
+    return None
+
+
+def _next_material_id(materials: list[dict[str, Any]]) -> str:
+    numbers = [
+        int(match.group(1))
+        for row in materials
+        if (match := re.fullmatch(r"M(\d+)", row["id"]))
+    ]
+    return f"M{max(numbers) + 1:02d}" if numbers else "M01"
 
 
 class App:
@@ -233,6 +324,62 @@ class App:
             "global_conflicts": conflicts,
         }
 
+    # -- 素材增删改 --------------------------------------------------------
+    def create_material(self, payload: dict[str, Any]) -> dict[str, Any]:
+        metadata = _clean_metadata(payload)
+        with self.db.transaction() as session:
+            repo = Repository(session)
+            duplicate = _find_duplicate(repo.list_materials(), metadata)
+            if duplicate:
+                raise Conflict(
+                    f"内容与素材 {duplicate} 重复（同一文件指纹），未创建；"
+                    "如需替换请直接编辑原素材"
+                )
+            material_id = _next_material_id(repo.list_materials())
+            repo.insert_material(material_id, metadata)
+        self._audit(material_id, metadata)
+        return self.material_detail(material_id)
+
+    def update_material(self, material_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        mid = material_id.strip().upper()
+        with self.db.transaction() as session:
+            repo = Repository(session)
+            material = repo.get_material(mid)
+            if material is None:
+                raise InvalidInput(f"素材 {mid} 不存在")
+            if repo.active_schedules_of(mid):
+                raise Conflict(f"素材 {mid} 已有有效排期，请先取消排期再修改内容")
+            base = dict(material.get("metadata") or {})
+            metadata = _clean_metadata(payload, base=base)
+            duplicate = _find_duplicate(repo.list_materials(), metadata, exclude=mid)
+            if duplicate:
+                raise Conflict(f"内容与素材 {duplicate} 重复（同一文件指纹），未保存")
+            repo.update_material(mid, metadata)
+        self._audit(mid, metadata)
+        return self.material_detail(mid)
+
+    def delete_material(self, material_id: str) -> dict[str, Any]:
+        mid = material_id.strip().upper()
+        with self.db.transaction() as session:
+            repo = Repository(session)
+            if repo.get_material(mid) is None:
+                raise InvalidInput(f"素材 {mid} 不存在")
+            active = repo.active_schedules_of(mid)
+            if active:
+                raise Conflict(
+                    f"素材 {mid} 还有 {len(active)} 条有效排期，请先取消后再删除"
+                )
+            removed = repo.delete_schedules_of(mid)  # 只剩 CANCELLED，随素材一起清掉
+            repo.delete_review(mid)
+            repo.delete_material(mid)
+        return {"ok": True, "deleted": mid, "removed_schedules": removed}
+
+    def _audit(self, material_id: str, metadata: dict[str, Any]) -> None:
+        """写入后立刻审一遍，让列表里马上看到 PASSED / INCOMPLETE / RISK。"""
+        from .tools import Faults
+
+        audit_check(self.db, material_id, metadata, Faults())
+
     # -- 冲突扫描 ----------------------------------------------------------
     @staticmethod
     def _slot_owners(schedules: list[dict[str, Any]]) -> dict[str, list[str]]:
@@ -376,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise InvalidInput("缺少素材 ID")
                 return self._send(200, self.app.material_detail(material_id))
             return self._send(404, {"error": "not found"})
+        except Conflict as exc:
+            self._send(409, {"error": str(exc)})
         except (InvalidInput, AgentError) as exc:
             self._send(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - 本地应用，返回可读错误即可
@@ -399,9 +548,46 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, self.app.cancel(int(draft_id)))
             if path == "/api/reset":
                 return self._send(200, self.app.reset())
+            if path == "/api/materials":
+                return self._send(201, self.app.create_material(payload))
             return self._send(404, {"error": "not found"})
+        except Conflict as exc:
+            self._send(409, {"error": str(exc)})
         except ChatError as exc:
             self._send(400, {"error": str(exc), "code": exc.code, "retryable": exc.retryable})
+        except (InvalidInput, AgentError) as exc:
+            self._send(400, {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+    def do_PUT(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        try:
+            payload = self._read_json()
+            if path.startswith("/api/materials/"):
+                material_id = path.removeprefix("/api/materials/").strip()
+                if not material_id:
+                    raise InvalidInput("缺少素材 ID")
+                return self._send(200, self.app.update_material(material_id, payload))
+            return self._send(404, {"error": "not found"})
+        except Conflict as exc:
+            self._send(409, {"error": str(exc)})
+        except (InvalidInput, AgentError) as exc:
+            self._send(400, {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        try:
+            if path.startswith("/api/materials/"):
+                material_id = path.removeprefix("/api/materials/").strip()
+                if not material_id:
+                    raise InvalidInput("缺少素材 ID")
+                return self._send(200, self.app.delete_material(material_id))
+            return self._send(404, {"error": "not found"})
+        except Conflict as exc:
+            self._send(409, {"error": str(exc)})
         except (InvalidInput, AgentError) as exc:
             self._send(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001

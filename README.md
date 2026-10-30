@@ -89,7 +89,7 @@ python -m src.main --input examples/normal.input.json --compact
 {"status":"completed","mode":"mock_react","material_id":"M02","draft":{"saved":true,"draft_id":2,"status":"DRAFT"},"published":false,"steps":5,"tool_calls":4,...}
 ```
 
-想更彻底一点，跑一遍测试（136 个用例，约 12 秒）：
+想更彻底一点，跑一遍测试（145 个用例，约 12 秒）：
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -156,9 +156,13 @@ python -m src.server --provider deepseek  # 默认用真实模型（界面右上
 
 ![草稿箱](docs/images/ui-drafts.png)
 
-**素材详情**：点左侧任意素材即可看它的元数据、审核结论、所有排期，以及「这条排期有没有和别的素材撞在同一时段」。
+**素材详情**：点左侧任意素材即可看它的元数据、审核结论、所有排期，以及「这条排期有没有和别的素材撞在同一时段」；底部可直接「编辑 / 删除」。
 
 ![素材详情](docs/images/ui-material.png)
+
+**新增素材**：左栏「+ 新增素材」打开表单，保存即写库并立刻跑一遍审核（所以列表马上能看到 PASSED / INCOMPLETE / RISK）；内容与已有素材重复会直接 409 拒绝。
+
+![新增素材](docs/images/ui-new-material.png)
 
 | 能力 | 说明 |
 | --- | --- |
@@ -168,10 +172,12 @@ python -m src.server --provider deepseek  # 默认用真实模型（界面右上
 | 运行结果 | 状态徽章、草稿 ID、待确认项、规则命中、token 用量、完整决策时间线 |
 | 草稿箱 | 全部排期 + 状态计数 + 冲突扫描；DRAFT 可确认/取消 |
 | 素材详情 | 元数据、审核结论与风险原因、该素材的排期、是否与别的素材冲突 |
+| 素材增删改查 | 左栏「+ 新增素材」建；详情页「编辑 / 删除」改和删；写入即自动审核 |
 | 一键操作 | `POST /api/confirm` / `POST /api/cancel`（仍是草稿，不发布） |
 | 重置数据 | 一键把运行库恢复到种子状态 |
 
 接口：`GET /api/bootstrap`、`GET /api/slots?date=`、`GET /api/drafts`、`GET /api/materials/{id}`、
+`POST /api/materials`、`PUT /api/materials/{id}`、`DELETE /api/materials/{id}`、
 `POST /api/run`、`POST /api/confirm`、`POST /api/cancel`、`POST /api/reset`。
 只监听 `127.0.0.1`，无鉴权——本地面向评审的演示，不要暴露到公网。
 
@@ -198,7 +204,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 136 个用例
+python -m unittest discover -s tests -v                        # 145 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
