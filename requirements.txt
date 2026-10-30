@@ -1,3 +1,5 @@
 # Python 3.10+
-# 唯一第三方依赖：LangGraph（自带 langchain-core / pydantic 等传递依赖）
+# ASCII only on purpose: pip decodes this file with the locale codec on Windows,
+# where non-ASCII comments break `pip install -r` under GBK/cp936.
+# The only third-party dependency: LangGraph (pulls langchain-core / pydantic).
 langgraph==1.2.18
