@@ -16,7 +16,7 @@
 | 需要 | 说明 |
 | --- | --- |
 | Python **3.10+** | `python --version` 能看到 3.10 及以上 |
-| git 
+| git | 用来 clone |
 | 数据库 / API key | **都不需要**。默认离线 Mock，`data/seed.json` 就是数据库 |
 
 ### 1 · 克隆仓库
@@ -217,6 +217,70 @@ python -m unittest discover -s tests -v                        # 136 个用例
 | `--model NAME` | 覆盖模型名，如 `deepseek-v4-pro` |
 | `--env-file PATH` | 指定 `.env` 路径 |
 
+## 保存失败（验收项 6）
+
+**定义**：审核过了、时段也定了，草稿写入 `publish_schedule` 的那一刻失败。它既不是审核不通过，也不是时段冲突，
+而是"算都算完了，落库没落成"。
+
+题目把这一项单列，是因为这里最容易出现三种作弊式实现：**谎报**（写失败却说已排期）、**半写**（留下脏数据）、
+**无限重试**（把不可恢复的错误一直重试）。
+
+### 系统怎么处理
+
+| 错误码 | 含义 | 是否重试 | 结果 |
+| --- | --- | --- | --- |
+| `DB_UNAVAILABLE` | 连接不可用、超时、锁超时 | **重试一次** | 仍失败 → `tool_error` |
+| `DB_WRITE_REJECTED` | 写入被拒（约束/权限） | 不重试 | 直接 `tool_error` |
+
+四条必须成立的性质：
+
+1. **明确失败**：`status=tool_error`、`draft.saved=false`、`published=false`，`message` 带错误码与「是否可重试」；
+2. **原子性**：只回滚保存这一步，库里不会出现半条草稿（审核结论保留，因为那一步已提交）；
+3. **重试纪律**：只有 `retryable` 才重试，且**只重试一次**——决策日志里能看到 `schedule_save_draft` 出现两次（可重试）
+   或一次（不可重试）；
+4. **不谎报**：模型若没落草稿却 `finish(completed/needs_confirmation)`，`finalize` 一律降级为 `blocked`。
+
+### 实测
+
+```powershell
+python -m src.main --input examples/save-failure.input.json
+```
+
+```text
+status=tool_error   published=false   draft.saved=false
+message: 调用 DB_UNAVAILABLE 失败，已重试 1 次：… 写入未生效（可重试）。未保存任何数据。
+决策: material_get → audit_check → slot_query → schedule_save_draft → schedule_save_draft → finish
+```
+
+把输入里的 `"save_failure": "db_unavailable"` 换成 `"db_write_rejected"`，决策里就只剩**一次** `schedule_save_draft`
+（不可重试，不浪费一次写）。
+
+### 和相邻验收项的区别
+
+同样"没存下"，但语义与处置不同——别看 `status` 就下结论，要看错误码：
+
+| 情况 | 错误码 | 是否重试 | 处置 |
+| --- | --- | --- | --- |
+| **保存失败**（本项） | `DB_UNAVAILABLE` / `DB_WRITE_REJECTED` | 可重试的一次 | 明确报失败 |
+| 时段被别的素材占用 | `SLOT_CONFLICT` | 否 | 换时段 |
+| 该素材已有排期 | `ALREADY_SCHEDULED` | 否 | 先取消原草稿 |
+| 素材未过审 | `INVALID_STATE` | 否 | 阻断 |
+| 高危规则命中（R005/R008/R009） | （不会走到保存） | 否 | 阻断 |
+
+### 自己验的时候看三处
+
+1. `draft.saved` 必须是 `false`；
+2. `message` 里**不能**出现「已保存 / 已排期 / 已完成」；
+3. `decisions` 里 `schedule_save_draft` 的次数符合重试策略。
+
+> 注意退出码仍然是 **0**：保存失败是业务结果（结果里用 `status` 表达），不是调用错误；
+> 只有入参本身不合法才是退出码 2。所以判断成败要看 JSON 的 `status`，别只看 shell 的退出码。
+
+对应实现：[`src/tools.py`](src/tools.py) 的 `schedule_save_draft`（错误码与重试标记）、
+[`src/store.py`](src/store.py) 的 `transaction()`（失败不落盘）、[`src/graph.py`](src/graph.py) 的 `_save_draft`（重试一次）与
+`_finalize`（不谎报守卫）。测试：`test_save_failure_is_reported_loudly`、`test_rollback_leaves_no_partial_row`、
+`test_finish_without_draft_is_downgraded_to_blocked`。
+
 ## ReAct 决策循环
 
 `src/graph.py` 只做四件事：解析意图（`prepare`）、让策略选动作（`agent`）、执行动作（`act`）、汇总（`finalize`）。
@@ -397,6 +461,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | ReAct 流程与取舍 | [方案](docs/02-solution.md) |
 | 实现细节 | [实现](docs/06-implementation.md) |
 | 界面 | [界面能做什么](#界面能做什么) |
+| 保存失败怎么处理 | [保存失败（验收项 6）](#保存失败验收项-6) |
 | 执行路径记录 | [run-records](examples/run-records.md) |
 | MySQL 设计 | [schema.sql](sql/schema.sql) |
 | 测试、预期、结果 | [评估](docs/03-evaluation.md) |
