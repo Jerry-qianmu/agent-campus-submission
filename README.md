@@ -9,12 +9,141 @@
 - 限步：`max_steps` 默认 10，超限返回 `step_limit_reached`（明确的未完成状态）
 - 界面：本地 Web 应用（标准库 HTTP + 单页前端），`python -m src.server` 打开即用
 
-## 界面（本地 Web 应用）
+## 从 clone 到打开界面（约 3 分钟）
+
+### 0 · 前置要求
+
+| 需要 | 说明 |
+| --- | --- |
+| Python **3.10+** | `python --version` 能看到 3.10 及以上 |
+| git | 用来 clone |
+| 数据库 / API key | **都不需要**。默认离线 Mock，`data/seed.json` 就是数据库 |
+
+### 1 · 克隆仓库
 
 ```sh
-python -m src.server            # 自动打开 http://127.0.0.1:8765
-python -m src.server --port 9000 --provider deepseek
+git clone <你的仓库地址>
+cd <仓库目录>
 ```
+
+### 2 · 建虚拟环境并安装依赖
+
+Windows（PowerShell）：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+macOS / Linux：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+装完确认一下：
+
+```powershell
+python -c "import importlib.metadata as m; print(m.version('langgraph'))"
+# 1.2.18
+```
+
+两个常见卡点：
+
+- **Activate 被拦**（`无法加载文件 ... 在此系统上禁止运行脚本`）：先执行 `Set-ExecutionPolicy -Scope Process Bypass -Force`；
+- **不想激活也行**：后面所有 `python` 换成 `.\.venv\Scripts\python.exe`（Windows）或 `.venv/bin/python`（macOS/Linux）。
+
+### 3 ·（可选）配置模型
+
+**默认什么都不用配**：`LLM_PROVIDER=mock`，走规则策略，不联网、不花钱，先确认流程能跑通。
+
+想用真实模型再配：
+
+```powershell
+Copy-Item .env.example .env      # macOS/Linux: cp .env.example .env
+```
+
+编辑 `.env`：
+
+```ini
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=sk-你的key
+DEEPSEEK_MODEL=deepseek-flash
+```
+
+配置**只从 `.env` 读**（代码里统一 `os.getenv`），不需要 `export`；改完文件下次运行就生效。
+`.env` 已在 `.gitignore` 里，不会被提交。
+
+### 4 · 先跑一条命令，确认环境通了
+
+```powershell
+python -m src.main --input examples/normal.input.json --compact
+```
+
+期望输出里 `status` 是 `completed`、`published` 是 `false`：
+
+```json
+{"status":"completed","mode":"mock_react","material_id":"M02","draft":{"saved":true,"draft_id":2,"status":"DRAFT"},"published":false,"steps":5,"tool_calls":4,...}
+```
+
+想更彻底一点，跑一遍测试（128 个用例，约 12 秒）：
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+### 5 · 启动 Web 应用
+
+```powershell
+python -m src.server
+```
+
+终端会打印：
+
+```
+[web] 排期 Agent 界面已启动：http://127.0.0.1:8765
+[web] 数据库：...\var\web-db.json（可用界面上的「重置数据」回到种子状态）
+```
+
+浏览器通常会自动打开；没开就手动访问 **<http://127.0.0.1:8765>**。
+
+常用变体：
+
+```powershell
+python -m src.server --port 9000          # 换端口
+python -m src.server --no-open            # 不自动开浏览器
+python -m src.server --provider deepseek  # 默认用真实模型（界面右上角也能切）
+```
+
+### 6 · 界面上手（30 秒）
+
+1. 左侧点 **M01 秋日限定甜品探店** → 右侧自动切到「素材详情」，先看它的审核态与已有排期；
+2. 时段网格点 **18:00**（红底 = 已被 M00 占用，**仍然可以选**，正好用来看 Agent 怎么处理冲突）；
+3. 约束保持「希望（可调整）」，点 **运行 Agent**；
+4. 「运行结果」显示：`待确认`、草稿 #2 落在 **19:00**、一条待确认项、`published=false`，下面是完整决策时间线；
+5. 点 **确认这份草稿**（页面不跳转，草稿状态就地更新）；切到「草稿箱」能看到它从 `DRAFT` 变成 `CONFIRMED`，`published` 仍然是 `false`；
+6. 想重来：右上角 **重置数据**。
+
+### 7 · 停止
+
+终端 `Ctrl+C`。运行库在 `var/web-db.json`，删掉或点「重置数据」都会回到种子状态。
+
+## 常见问题
+
+| 现象 | 原因与解法 |
+| --- | --- |
+| `ModuleNotFoundError: No module named 'langgraph'` | 用了系统 python 而不是虚拟环境里的；用 `.\.venv\Scripts\python.exe` 或先激活 |
+| `ModuleNotFoundError: No module named 'src'` | 不在仓库根目录；`python -m src.*` 要求 cwd 是仓库根 |
+| `Activate.ps1`「禁止运行脚本」 | `Set-ExecutionPolicy -Scope Process Bypass -Force`，或直接用 venv 里 python 的全路径 |
+| 端口 8765 被占用 | `python -m src.server --port 9000` |
+| 界面显示「未配置 DEEPSEEK_API_KEY」 | `.env` 没填 key 或不在仓库根；可先用 Mock 跑 |
+| `pip install` 报 `UnicodeDecodeError` | 老版本 `requirements.txt` 带中文注释导致 pip 用 cp936 解码；更新到最新提交（已改 ASCII） |
+| 示例日期看着"过期" | 示例把 `now` 冻在输入里，不依赖真实时间，属于设计 |
+
+## 界面能做什么
 
 左侧选素材、选时段（占用时段也能选，用来看 Agent 怎么处理冲突）、选硬/软约束；右侧三个标签页：
 **运行结果**（决策过程）、**草稿箱**（所有排期 + 冲突扫描）、**素材详情**（单个素材的审核态、排期、与谁冲突）。
@@ -46,13 +175,11 @@ python -m src.server --port 9000 --provider deepseek
 `POST /api/run`、`POST /api/confirm`、`POST /api/cancel`、`POST /api/reset`。
 只监听 `127.0.0.1`，无鉴权——本地面向评审的演示，不要暴露到公网。
 
-## 快速运行
+## 命令行用法
 
-Python 3.10+，只需 `langgraph` 一个第三方依赖。
+装好依赖后，CLI 与 Web 是同一套流程，只是入口不同：
 
 ```sh
-pip install -r requirements.txt
-
 python -m src.main --input examples/normal.input.json          # 正常排期 → completed
 python -m src.main --input examples/conflict.input.json        # 18:00 被占，建议 19:00 → needs_confirmation
 python -m src.main --input examples/hard-conflict.input.json   # 硬性要求不被改动 → blocked
@@ -85,6 +212,9 @@ python -m unittest discover -s tests -v                        # 128 个用例
 | `--compact` | 单行 JSON 输出 |
 | `--max-steps N` | 工具调用次数上限（默认 10），超限返回 `step_limit_reached` |
 | `--log PATH` | 把决策日志写成 JSONL |
+| `--provider mock\|deepseek` | 覆盖模型来源（默认读 `.env` 的 `LLM_PROVIDER`） |
+| `--model NAME` | 覆盖模型名，如 `deepseek-v4-pro` |
+| `--env-file PATH` | 指定 `.env` 路径 |
 
 ## ReAct 决策循环
 
@@ -265,7 +395,7 @@ python -m src.main --input examples/conflict.input.json --provider deepseek --en
 | 业务目标与范围 | [需求](docs/01-requirements.md) |
 | ReAct 流程与取舍 | [方案](docs/02-solution.md) |
 | 实现细节 | [实现](docs/06-implementation.md) |
-| 界面 | [本地 Web 应用](#界面本地-web-应用) |
+| 界面 | [界面能做什么](#界面能做什么) |
 | 执行路径记录 | [run-records](examples/run-records.md) |
 | MySQL 设计 | [schema.sql](sql/schema.sql) |
 | 测试、预期、结果 | [评估](docs/03-evaluation.md) |
