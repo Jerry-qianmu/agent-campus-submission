@@ -9,7 +9,7 @@
 | 设计 | 我的决定 | 证据 |
 |---|---|---|
 | 存储架构 | **双轨**：`sql/schema.sql` 保留 MySQL 设计，运行时用 JSON 单文件库 | [schema.sql](../sql/schema.sql)、`src/store.py` |
-| 表与字段 | 排期表与审核表分开；`release_date` 为 NULL 即未发布 | [题目](题目.md) §1、`schema.sql` |
+| 表与字段 | 排期表与审核表分开；`release_date` 为 NULL 即未发布 | [题目](../题目.md) §1、`schema.sql` |
 | 唯一键与占用口径 | 同素材同时段一条 + 请求幂等键；`DRAFT` 也算占用、容量 1 | `TableSpec`、`slot_query` |
 | 一致性边界 | 一个素材只允许一条有效排期；同一文件换 ID 按内容指纹判重 | `ALREADY_SCHEDULED`、R009 |
 | 主流程 | `prepare → agent ⇄ act → finalize`；补查限一次；软性可改档、硬性不改期 | `src/graph.py`、`src/policy.py` |
