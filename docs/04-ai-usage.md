@@ -1,37 +1,93 @@
 # AI 使用说明
 
-本项目在 AI 辅助下完成，代码为可运行的 mock 实现，**不调用大模型**。
-以下记录哪些部分由 AI 起草、我用什么方式验证，以及哪些改动是我自己的判断。
+## 一句话分工
 
-| 阶段 | AI 贡献 | 验证方式 |
+**代码主要由 AI 生成；需求、取舍、验收和真实环境联调由我做。**
+这份文档记的是我做了什么判断、发现了哪些问题、用什么证据确认它们修好了——不是"我用了 AI"的流水账。
+
+我没有把 AI 当"生成完就交"的工具：每一轮它交东西，我都要求给出可复现的证据（测试、示例输出、截图、真实 API 跑通），
+不接受"应该可以"。
+
+## 我实际做了什么
+
+### 1. 定方向与红线（AI 不能改的部分）
+
+| 我定的规则 | 为什么 | 落地位置 |
 |---|---|---|
-| 结构 | 按参考示例的目录规范起草 README、docs、examples 布局 | 对照交付规范逐项检查链接与文件是否存在 |
-| 数据层 | 起草 JSON 库的表/唯一键/事务实现 | `tests/test_store.py`：唯一键、回滚、原子写、8 线程并发 |
-| 规则 | 起草 R001–R008 规则骨架 | `tests/test_rules.py` 逐条断言结论与规则码 |
-| 编排 | 起草 LangGraph 循环、动作注册表、策略层 | `tests/test_workflow.py` 断言决策序列、限步与假模型循环 |
-| 模型客户端 | 起草 `src/clients.py`（DeepSeek 报文、重试矩阵、错误码翻译） | `tests/test_clients.py` 用假 transport 覆盖 429/5xx/400/401/402/超时，不需要真实 key |
-| 文档 | 起草 docs 各篇初稿 | 与代码行为逐条核对，删掉未实现的能力描述 |
+| 只存草稿，不接真实发布 | 题目明确要求，也是最容易"顺手加个发布按钮"的地方 | `status` 上限 `CONFIRMED`；`published` 恒 `false`；`release_date` 永不写 |
+| 判定必须确定性，模型只能选动作 | 同一素材不能两次跑出两个审核结论 | 审核走 `rules.py` 纯函数；时段占用查表；重复由唯一键判 |
+| 硬性时间不得擅自改 | "必须 18:00"被改期是最得罪用户的行为 | 冲突时只 `finish(blocked)` 交回选项，不落库 |
+| 保存失败必须说失败 | 宁可报错，也不能让用户以为排好了 | `tool_error` + `message` 带错误码；`finalize` 兜底降级 |
+| 没有实现的功能不许写进文档 | 交的是作业，不是 PPT | 删掉过「支持批量」「已接入真实模型」等不实描述 |
 
-## 我做出并保留的修改
+### 2. 我发现的缺陷（这些是我推动修的）
 
-| 问题 | 处理 |
+| 我指出的问题 | 后果 | 修法 |
+|---|---|---|
+| 初版是固定七节点流程图，"下一步走哪条边"是写死的 | 不满足考核规则里「模型选动作 → 执行 → 观察 → 调整」的要求 | 重构成 `prepare → agent ⇄ act → finalize`，策略每轮读观测再决定，并加 `max_steps` 兜底 |
+| 唯一键只有 `(material_id, date)` | 同一素材换个时段还能再排一条，一个素材占两个档 | 保存前查该素材其它有效排期，命中 `ALREADY_SCHEDULED` 并带出原草稿 |
+| 去重全靠 `material_id` | 同一份文件换个 ID 重传就是"新素材" | 加内容指纹（`file_url+duration+format` 归一化后 sha256），同指纹判 R009 / RISK，建素材时直接 409 |
+| 配置只读 `os.environ` | 我在 `.env` 里配好了 key，程序还说没有 | 加 `.env` 加载器，全项目统一 `os.getenv`；`.env` 覆盖同名进程变量，改文件就生效 |
+| 需求里没有素材维护 | 只能靠改种子文件加素材，不像个应用 | 补 `POST/PUT/DELETE /api/materials` + 前端弹窗，写入即审核 |
+
+### 3. 我做过的验收（不是"看它说通过了"）
+
+| 验收方式 | 具体动作 | 结果 |
+|---|---|---|
+| 单测 | `python -m unittest discover -s tests -v` | 145 个用例全通过 |
+| 示例回归 | 11 条 CLI 示例逐条比对 `status` | 11/11 符合预期 |
+| 真实模型 | 用自己的 DeepSeek key 跑 `--provider deepseek` | 3 条路径与 mock 结论一致（token 用量见 [run-records](../examples/run-records.md)） |
+| 从零安装 | 在空目录 `git clone` → venv → `pip install` → CLI → 起服务 | 全部走通（这一步抓到 `requirements.txt` 编码问题） |
+| 界面 | headless 浏览器截图逐页看 | 抓到弹窗样式与「弹窗常驻」两个问题 |
+
+## AI 做了什么，我怎么验的
+
+| 模块 | AI 产出 | 我的验证 |
+|---|---|---|
+| 存储层 | JSON 库（表/唯一键/事务/文件锁） | `tests/test_store.py`：唯一键、NULL 语义、回滚不落盘、8 线程并发 |
+| 审核规则 | R001–R009 骨架 | `tests/test_rules.py` 逐条断言结论与规则码 |
+| 编排与策略 | LangGraph 循环、动作注册表、`MockPolicy` / `LLMPolicy` | `tests/test_workflow.py` 断言决策序列、限步、假模型循环 |
+| 模型客户端 | DeepSeek 报文、重试矩阵、错误码翻译 | `tests/test_clients.py` 用假 transport 覆盖 429/5xx/400/401/402/超时 |
+| Web 层 | 标准库 HTTP + 单页界面 | `tests/test_server.py` 31 例 + 截图实看 |
+| 文档 | 各篇初稿 | 与代码行为逐条核对，删掉未实现的能力 |
+
+## 实现过程中暴露、我要求修正的问题
+
+这些是 AI 实现里真实犯过的错。列出来不是为了甩锅，而是说明**每一处都有对应的回归测试或验证动作**，
+下次换个题目也知道该盯哪里：
+
+| 现象 | 根因 | 现在的防线 |
+|---|---|---|
+| 重复提交产生两份草稿 | 冲突判断比幂等检查更早，把请求推到了别的时段 | `slot_query` 排除自身占位 + 唯一键 + 幂等键，`test_duplicate_submission_creates_one_draft` |
+| 补查永远读到同一份数据 | `ToolContext` 每轮重建 | 整轮共用一个上下文，`test_metadata_lag_recovers_after_recheck` |
+| 模型不落草稿就 `finish(needs_confirmation)` | 把"完成"交给模型自觉 | prompt 规则 + `finalize` 降级为 `blocked`，`test_finish_without_draft_is_downgraded_to_blocked` |
+| 工具名 `material.get` 被 DeepSeek 400 | function name 只允许 `[a-zA-Z0-9_-]` | 全部改下划线，联调复跑 |
+| `pip install -r requirements.txt` 在中文 Windows 崩 | pip 用 cp936 解码，文件里有中文注释 | `requirements.txt` 改 ASCII |
+| 弹窗在每次加载都显示 | `.modal{display:grid}` 盖掉了 `[hidden]` 的默认样式 | `.modal[hidden]{display:none}`，截图复验 |
+| Windows 并发测试偶发 `PermissionError` | 锁文件 delete-pending 时返回的不是 `FileExistsError` | `_file_lock` 把 `PermissionError` 也当占用重试，另加压力脚本 |
+
+## 我在 AI 输出上做的删改
+
+| AI 的写法 | 我的决定 |
 |---|---|
-| 第一版把「审核结论」也交给模型输出 | 改为纯函数规则，模型只解析意图；理由是同一素材不能两次跑出两个结论 |
-| 第一版是固定分支流程图，不满足「模型选动作」要求 | 重构成 `agent ⇄ act` 循环：策略每轮读观测再决定，并加 `max_steps` 兜底 |
-| `slot_query` 把自己上次的草稿算成占用 | 加 `exclude_material`，否则重复提交会被误判冲突并生成第二份草稿（详见 [实现细节 §4.3](06-implementation.md)） |
-| 重复提交只靠幂等键 | 补 `uk_material_date` 与「同素材占位不算冲突」两层，因为第一版实测真的产生了两份草稿 |
-| 提醒失败会阻断主流程 | 改为降级：排期照常，`notify.degraded=true` |
-| ReAct 第一版每轮重建 `ToolContext` | 补查永远读到同一份数据，"补查"等于没做；改为整轮共用一个上下文 |
-| 文档里写了「支持批量」 | 删掉——没有实现，不把「计划做」记为「已实现」 |
+| 把审核结论交给模型输出 | 改为纯函数规则——结论必须可复现、可回归 |
+| 计划写"支持批量排期" | 删掉，没实现就不写 |
+| 文档里出现"已接入真实模型" | 先改成"未联调"，等真的跑通再改回来 |
+| 用 PowerShell 批量改文档 | 导致 BOM/CRLF 混入，改为脚本 + 全仓归一检查 |
+| 直接 `git add -A`，把我手动改到一半的 README 一起提交（还带了一行截断的表格） | 要求提交前先看 `git diff`；补回表格行，并加全仓表格/编码检查 |
 
-## 未使用 AI 的判断
+## 我没有交给 AI 的判断
 
-- 硬性/软性时间要求的边界（冲突时只能请求确认，不能自动改期）；
-- 保存失败必须显式返回失败、不允许回复「已完成」；
-- `published` 恒为 `false`、`status` 上限 `CONFIRMED` 的状态机设计；
+- 硬性/软性时间要求的边界：冲突时只能请求确认，不能自动改期；
+- 保存失败必须显式失败、回复里不得出现「已排期」；
+- `published` 恒 `false`、`status` 上限 `CONFIRMED` 的状态机；
 - 六类验收与示例的一一对应关系；
-- ReAct 的判定权划分：模型选动作、代码定事实，并加步数上限兜底。
+- ReAct 的判定权划分：模型选动作、代码定事实，并加步数上限。
 
-## 说明
+## 边界
 
-未进行真人问答与真实模型评测；不能仅凭本文件证明个人贡献，代码与测试是可复核的证据。
+- 真实模型只跑了 `deepseek-flash` 的 3 条路径（各 1 次），样本不足以评价稳定性；
+- 没有真人问答与用户测试，产品判断来自题目描述与常识；
+- 实际投入与未完成部分见 [复盘](05-retrospective.md)；
+- 代码量与改动次数说明不了能力，**能复核的是**：`tests/` 的断言、`examples/` 的真实输出、
+  `docs/images/` 的截图、以及真实 API 的调用记录。这些都不依赖我口头描述。
