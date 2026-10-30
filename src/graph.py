@@ -22,8 +22,9 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from .llm import LLMClient, MockLLM
-from .policy import Context, Policy
+from .clients import ChatError
+from .llm import LLMClient, get_llm as build_llm
+from .policy import Context, Policy, get_policy as build_policy
 from .registry import ToolContext, execute_tool
 from .rules import FIELD_LABELS, RULES_VERSION
 from .store import JsonDatabase
@@ -51,6 +52,7 @@ class AgentState(TypedDict, total=False):
     observations: list[dict[str, Any]]
     decisions: list[dict[str, Any]]
     next: dict[str, Any]
+    llm_usage: dict[str, int]
     result: dict[str, Any]
     trace: list[str]
 
@@ -117,15 +119,30 @@ def _agent(state: AgentState, deps: Deps) -> dict[str, Any]:
             },
         )
 
-    decision = deps.policy.decide(
-        Context(
-            request=state["request"],
-            intent=state["intent"],
-            observations=observations,
-            now=deps.now,
-            max_steps=deps.max_steps,
+    try:
+        decision = deps.policy.decide(
+            Context(
+                request=state["request"],
+                intent=state["intent"],
+                observations=observations,
+                now=deps.now,
+                max_steps=deps.max_steps,
+            )
         )
-    )
+    except ChatError as error:
+        # 模型本身不可用（超时/限速/余额/鉴权）：如实报失败，不当成"没有结论"继续跑
+        return _step(
+            state,
+            "agent",
+            next={
+                "finish": {
+                    "status": "tool_error",
+                    "reason": f"模型调用失败：{error}",
+                    "model_error": error.as_dict(),
+                }
+            },
+        )
+
     record = {
         "step": len(state.get("decisions") or []) + 1,
         "action": decision.tool or "finish",
@@ -134,11 +151,17 @@ def _agent(state: AgentState, deps: Deps) -> dict[str, Any]:
         "observation": None,
         "next": None,
     }
+    usage = dict(state.get("llm_usage") or {})
+    if decision.usage:
+        for key, value in decision.usage.items():
+            if isinstance(value, int):
+                usage[key] = usage.get(key, 0) + value
     return _step(
         state,
         "agent",
         decisions=list(state.get("decisions") or []) + [record],
         next=decision.action_payload(),
+        llm_usage=usage,
     )
 
 
@@ -247,16 +270,20 @@ def _finalize(state: AgentState, deps: Deps) -> dict[str, Any]:
         "tool_calls": len(observations),
         "max_steps": deps.max_steps,
         "decisions": decisions,
+        "llm_usage": state.get("llm_usage") or {},
         "message": _message(status, finish_payload, draft, pending, deps.max_steps, observations),
         "evidence": {
             "material_id": material_id,
             "rules_version": audit.get("rules_version") or deps.rules_version,
             "policy": deps.policy.name,
+            "model": getattr(deps.policy, "model", None) or "rules",
             "audit_table": "material_review",
             "schedule_table": "publish_schedule",
         },
         "trace": list(state.get("trace") or []) + ["finalize"],
     }
+    if finish_payload.get("model_error"):
+        result["model_error"] = finish_payload["model_error"]
     return _step(state, "finalize", result=result)
 
 
@@ -374,8 +401,14 @@ def run_request(
     llm: LLMClient | None = None,
     policy: Policy | None = None,
     max_steps: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
-    """跑一次完整 ReAct 流程。max_steps 优先取参数，其次请求字段，最后默认值。"""
+    """跑一次完整 ReAct 流程。
+
+    provider/model 只在未显式传 policy/llm 时生效：
+    mock（默认）用规则策略，deepseek 用真实模型客户端。
+    """
     resolved_now = parse_datetime(now) if now is not None else parse_datetime(datetime.now())
 
     if max_steps is None:
@@ -386,13 +419,13 @@ def run_request(
         )
 
     if policy is None:
-        from .policy import MockPolicy
-
-        policy = MockPolicy()
+        policy = build_policy(provider, model)
+    if llm is None:
+        llm = build_llm(provider, model)
 
     deps = Deps(
         db=db,
-        llm=llm or MockLLM(),
+        llm=llm,
         policy=policy,
         now=resolved_now,
         max_steps=max_steps,

@@ -14,11 +14,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
+from .clients import ChatClient, build_client
 from .errors import InvalidInput
 from .util import TZ, floor_hour, parse_datetime, to_iso
 
@@ -155,80 +155,54 @@ class MockLLM:
         return "soft"
 
 
-Transport = Callable[[str, dict[str, str], bytes], str]
-
-
-def _urllib_transport(url: str, headers: dict[str, str], body: bytes) -> str:
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - 仅访问自配地址
-        return resp.read().decode("utf-8")
-
-
 class HttpLLM:
-    """OpenAI 兼容实现。默认不启用；仓库内未做端到端联调（无密钥）。"""
+    """真实模型做意图解析：一次 chat 调用 + JSON 输出，client 负责重试与错误翻译。"""
 
-    name = "http"
+    name = "llm"
 
     SYSTEM_PROMPT = (
-        "你是素材发布排期的意图解析器。只输出 JSON，不要解释。字段："
+        "你是素材发布排期的意图解析器。只输出 JSON，不要解释，也不要输出推理过程。字段："
         "material_id（字符串或 null）、desired_slot（ISO 8601 或 null）、"
         "slot_constraint（hard 或 soft）。用户语气是「必须/只能」时为 hard。"
+        "拿不准的字段一律给 null，不要编造。"
     )
 
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        model: str,
-        transport: Transport | None = None,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.model = model
-        self.transport = transport or _urllib_transport
+    def __init__(self, client: ChatClient) -> None:
+        self.client = client
+        self.model = getattr(client, "model", "")
+        self.name = getattr(client, "name", "llm")
 
     def parse_intent(self, request: dict[str, Any], now: datetime) -> Intent:
-        payload = {
-            "model": self.model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": self.SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "now": to_iso(now),
-                            "user_text": request.get("user_text"),
-                            "structured": {
-                                "material_id": request.get("material_id"),
-                                "desired_slot": request.get("desired_slot"),
-                                "slot_constraint": request.get("slot_constraint"),
-                            },
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "now": to_iso(now),
+                        "user_text": request.get("user_text"),
+                        "structured": {
+                            "material_id": request.get("material_id"),
+                            "desired_slot": request.get("desired_slot"),
+                            "slot_constraint": request.get("slot_constraint"),
                         },
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
-        }
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        raw = self.transport(
-            f"{self.base_url}/chat/completions", headers, body
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+        result = self.client.chat(
+            messages, response_format={"type": "json_object"}, temperature=0.0
         )
-        return self._parse_response(raw, request, now)
+        return self._parse_content(result.content, request)
 
-    def _parse_response(
-        self, raw: str, request: dict[str, Any], now: datetime
-    ) -> Intent:
+    def _parse_content(self, content: str, request: dict[str, Any]) -> Intent:
         try:
-            content = json.loads(raw)["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            parsed = json.loads(_strip_code_fence(content))
+        except (TypeError, json.JSONDecodeError) as exc:
             raise InvalidInput(f"模型返回不是合法 JSON：{exc}") from exc
+        if not isinstance(parsed, dict):
+            raise InvalidInput("模型返回的意图必须是 JSON 对象")
 
         material_id = _clean_material_id(parsed.get("material_id")) or _clean_material_id(
             request.get("material_id")
@@ -250,13 +224,25 @@ class HttpLLM:
         )
 
 
-def get_llm() -> LLMClient:
-    provider = (os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
-    if provider != "http":
+def _strip_code_fence(text: str) -> str:
+    """模型偶尔会包一层 ```json ... ```，这里兜底剥掉。"""
+    body = (text or "").strip()
+    if not body.startswith("```"):
+        return body
+    lines = body.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def get_llm(provider: str | None = None, model: str | None = None) -> LLMClient:
+    """按 provider 选择意图解析实现；mock 时用规则解析，不产生任何网络请求。"""
+    resolved = (provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    if resolved in ("mock", "offline"):
         return MockLLM()
-    base_url = os.environ.get("LLM_BASE_URL")
-    api_key = os.environ.get("LLM_API_KEY")
-    model = os.environ.get("LLM_MODEL")
-    if not (base_url and api_key and model):
-        raise InvalidInput("LLM_PROVIDER=http 需要同时配置 LLM_BASE_URL/LLM_API_KEY/LLM_MODEL")
-    return HttpLLM(base_url=base_url, api_key=api_key, model=model)
+    client = build_client(resolved, model)
+    if client is None:  # pragma: no cover - build_client 在非 mock 时不会返回 None
+        return MockLLM()
+    return HttpLLM(client)

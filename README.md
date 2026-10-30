@@ -32,7 +32,7 @@ python -m src.main --input examples/conflict.input.json --log examples/run-recor
 # 限步演示：正常要 7 步，卡到 2 步会返回未完成
 python -m src.main --input examples/metadata-lag.input.json --max-steps 2
 
-python -m unittest discover -s tests -v                        # 68 个用例
+python -m unittest discover -s tests -v                        # 91 个用例
 ```
 
 成功输出 JSON；业务异常（缺字段、风险、冲突、保存失败）以 JSON 的 `status` 返回，退出码 0；
@@ -78,7 +78,37 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 机器可读版是同目录的 `run-record-*.jsonl`。
 
 **边界**：默认 `MockPolicy` 是规则决策，它证明循环成立、判定可靠，**不证明真实模型的决策质量**。
-真实模型路径 `LLMPolicy`（OpenAI 兼容 tool-calling）已实现但未端到端联调，仓库里用一个脚本化假模型跑通了整圈（`test_llm_policy_drives_the_same_loop`）。
+真实模型路径 `LLMPolicy` 已实现（见下节），但**未用真实 key 跑过联调**。
+
+## 接入真实模型（DeepSeek）
+
+```sh
+# PowerShell：只对当前会话生效，不要写进仓库
+$env:DEEPSEEK_API_KEY = "sk-..."
+
+python -m scripts.smoke_deepseek          # 连通性 + 工具调用两个检查点
+python -m scripts.smoke_deepseek --full   # 再跑一遍完整 ReAct 示例（conflict）
+
+python -m src.main --input examples/conflict.input.json --provider deepseek
+python -m src.main --input examples/conflict.input.json --provider deepseek --model deepseek-v4-pro
+```
+
+| 环境变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `mock` | `mock` / `deepseek` / `http`；也可用 `--provider` |
+| `DEEPSEEK_API_KEY` | — | 必填（也兼容 `LLM_API_KEY`） |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 可指向代理 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 也可用 `deepseek-v4-pro` |
+| `DEEPSEEK_THINKING` | `disabled` | `enabled` 时自动去掉 `temperature` |
+| `DEEPSEEK_REASONING_EFFORT` | 空 | `none/low/high/max`，设置后覆盖 THINKING |
+| `DEEPSEEK_TIMEOUT` / `DEEPSEEK_MAX_RETRIES` | `60` / `2` | 超时秒数与重试次数 |
+
+实现要点（细节见 [docs/06 §2.7](docs/06-implementation.md)）：
+
+- 走 OpenAI 兼容协议，`tools` + `tool_choice=auto`，`reasoning_content` 只读不回传；
+- 重试只针对 429 / 5xx / 超时，指数退避，尊重 `Retry-After`；400/401/402/422 立即失败；
+- 模型层失败时输出 `status=tool_error` + `model_error{code,status,retryable}`，不落草稿、不谎报；
+- 每轮 `usage` 累加进输出的 `llm_usage`，可直接看 token 成本。
 
 ## 项目目录
 
@@ -104,10 +134,11 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 │   ├── main.py                   # CLI：读请求 → 跑循环 → 输出 JSON / 决策日志
 │   ├── graph.py                  # LangGraph：prepare → agent ⇄ act → finalize
 │   ├── policy.py                 # 决策策略：MockPolicy（默认）/ LLMPolicy（tool-calling）
+│   ├── clients.py                # 模型客户端：DeepSeek / OpenAI 兼容（重试、超时、错误码）
 │   ├── registry.py               # 动作注册表：5 个工具 + JSON Schema + 观测摘要
 │   ├── tools.py                  # 工具实现（ToolResult + 错误码）
 │   ├── rules.py                  # 审核规则 R001–R008（纯函数）
-│   ├── llm.py                    # 意图解析：MockLLM（默认）/ HttpLLM（可选）
+│   ├── llm.py                    # 意图解析：MockLLM（默认）/ HttpLLM（真实模型）
 │   ├── repository.py             # 数据访问层（换 MySQL 只改这里）
 │   ├── store.py                  # JSON 单文件库：唯一键 + 事务 + 文件锁
 │   ├── util.py                   # 时区、整点对齐、幂等键
@@ -117,10 +148,12 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 │   ├── test_store.py             # 唯一键/回滚/并发/原子写
 │   ├── test_rules.py             # 规则逐条
 │   ├── test_llm.py               # 意图解析 + HttpLLM 报文
+│   ├── test_clients.py           # DeepSeek 报文/重试/错误码
 │   ├── test_workflow.py          # 六类验收 + ReAct 循环 + 限步
 │   └── test_cli.py               # 退出码、跨进程幂等、--log/--max-steps
 ├── scripts/
 │   ├── regen_examples.py         # 重新生成示例输出、决策记录与测试记录
+│   ├── smoke_deepseek.py         # 真实 key 联调：连通性 + 工具调用 + 完整流程
 │   └── stress_lock.py            # 文件锁并发压力脚本
 └── examples/
     ├── *.input.json / *.output.json
@@ -182,7 +215,7 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 - `published` 恒为 `false`，没有任何代码路径写 `PUBLISHED` 或 `release_date`；`status` 上限是 `CONFIRMED`（仍是草稿）。
 - 硬性时间要求（「必须 18:00」）遇到冲突时**不会被自动改期**，只会把冲突和选项交回用户。
 - 素材信息缺失时不猜、不填默认值，只列出缺什么。
-- 默认决策是规则版 `MockPolicy`；`LLMPolicy` 未端到端联调（无密钥），只用一个脚本化假模型验证了循环。
+- 默认决策是规则版 `MockPolicy`；DeepSeek 客户端已实现并单测，但**未用真实 key 联调**，线上行为需先跑 `scripts/smoke_deepseek.py`。
 - 达到 `max_steps` 会返回 `step_limit_reached`，`finished=false`，不产生草稿。
 
 ## 提交信息

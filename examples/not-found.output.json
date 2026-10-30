@@ -50,11 +50,13 @@
       "next": null
     }
   ],
+  "llm_usage": {},
   "message": "素材不存在，请确认素材 ID：material.get 失败：NOT_FOUND 素材 M99 不存在。",
   "evidence": {
     "material_id": "M99",
     "rules_version": "r2026.11.1",
     "policy": "mock",
+    "model": "rules",
     "audit_table": "material_review",
     "schedule_table": "publish_schedule"
   },

@@ -1,6 +1,7 @@
 import json
 import unittest
 
+from src.clients import ChatError, OpenAICompatibleClient
 from src.errors import InvalidInput
 from src.llm import HttpLLM, MockLLM
 from src.util import parse_datetime
@@ -75,6 +76,10 @@ class MockLLMTests(unittest.TestCase):
             self.llm.parse_intent({"user_text": "把 M01 排在 25:00"}, NOW)
 
 
+def _client(transport):
+    return OpenAICompatibleClient("k", "https://api.demo/v1", "demo-model", transport=transport)
+
+
 class HttpLLMTests(unittest.TestCase):
     def test_parses_openai_style_payload(self):
         captured = {}
@@ -100,17 +105,39 @@ class HttpLLMTests(unittest.TestCase):
                 }
             )
 
-        llm = HttpLLM("https://api.demo/v1", "k", "demo-model", transport=fake_transport)
+        llm = HttpLLM(_client(fake_transport))
         intent = llm.parse_intent({"user_text": "把 M05 排在 21:00"}, NOW)
 
         self.assertEqual(captured["url"], "https://api.demo/v1/chat/completions")
         self.assertEqual(captured["body"]["model"], "demo-model")
+        self.assertEqual(captured["body"]["response_format"], {"type": "json_object"})
         self.assertEqual(intent.material_id, "M05")
         self.assertEqual(intent.desired_slot, "2026-11-05T21:00:00+08:00")
         self.assertEqual(intent.slot_constraint, "hard")
 
-    def test_malformed_response_raises(self):
-        llm = HttpLLM("https://api.demo/v1", "k", "m", transport=lambda *a: "not json")
+    def test_code_fence_is_stripped(self):
+        content = (
+            '```json\n{"material_id": "M01", "desired_slot": '
+            '"2026-11-05T18:00:00+08:00", "slot_constraint": "hard"}\n```'
+        )
+
+        def fake_transport(url, headers, body):
+            return json.dumps({"choices": [{"message": {"content": content}}]})
+
+        intent = HttpLLM(_client(fake_transport)).parse_intent({"user_text": "x"}, NOW)
+        self.assertEqual(intent.material_id, "M01")
+        self.assertEqual(intent.slot_constraint, "hard")
+
+    def test_malformed_response_raises_chat_error(self):
+        llm = HttpLLM(_client(lambda *a: "not json"))
+        with self.assertRaises(ChatError):
+            llm.parse_intent({"material_id": "M01"}, NOW)
+
+    def test_non_json_content_raises_invalid_input(self):
+        def fake_transport(url, headers, body):
+            return json.dumps({"choices": [{"message": {"content": "抱歉，我无法解析"}}]})
+
+        llm = HttpLLM(_client(fake_transport))
         with self.assertRaises(InvalidInput):
             llm.parse_intent({"material_id": "M01"}, NOW)
 

@@ -50,11 +50,13 @@
       "next": null
     }
   ],
+  "llm_usage": {},
   "message": "调用 SOURCE_UNAVAILABLE 失败，已重试 1 次：material.get 失败：SOURCE_UNAVAILABLE 素材服务不可用（已模拟），请稍后重试（可重试）。未保存任何数据。",
   "evidence": {
     "material_id": "M02",
     "rules_version": "r2026.11.1",
     "policy": "mock",
+    "model": "rules",
     "audit_table": "material_review",
     "schedule_table": "publish_schedule"
   },

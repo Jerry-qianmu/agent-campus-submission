@@ -10,8 +10,9 @@
 ```
 CLI (src/main.py)  --log 写决策日志 JSONL
   └── LangGraph ReAct 循环 (src/graph.py)   prepare → agent ⇄ act → finalize
-        ├── 意图解析 src/llm.py      MockLLM（默认）/ HttpLLM（可选）
+        ├── 意图解析 src/llm.py      MockLLM（默认）/ HttpLLM（真实模型）
         ├── 决策策略 src/policy.py   MockPolicy（默认）/ LLMPolicy（tool-calling）
+        ├── 模型客户端 src/clients.py OpenAI 兼容 / DeepSeek（重试、超时、错误码）
         ├── 动作注册 src/registry.py 5 个工具 + JSON Schema + 观测摘要
         ├── 工具实现 src/tools.py    读素材 / 审核 / 查时段 / 存草稿 / 提醒
         │     ├── 规则判定 src/rules.py  R001–R008 纯函数
@@ -105,6 +106,51 @@ flowchart TD
 | `decisions` | list | 每轮模型决策 + 依据 + 后续动作 |
 | `next` | dict | 本轮待执行的动作，或终局 |
 | `trace` | list[str] | `prepare / agent / act:<tool> / finalize` 序列 |
+
+### 2.7 真实模型接入（DeepSeek）
+
+`src/clients.py` 是唯一的 HTTP 层：`OpenAICompatibleClient` + `DeepSeekClient`（继承前者）。
+`LLMPolicy` / `HttpLLM` 都只依赖 `ChatClient` 协议，所以换厂商不动循环、换循环不动厂商。
+
+| 项 | 值 |
+| --- | --- |
+| 端点 | `POST https://api.deepseek.com/chat/completions`（`base_url` 可覆盖） |
+| 模型 | `deepseek-flash`（默认）/ `deepseek-v4-pro` |
+| 工具 | `tools` + `tool_choice=auto`；思考模式下不允许 `required` 或指定具体 tool（会 400） |
+| 思考模式 | 省略参数时服务端默认开启，所以"关闭"必须显式传 `thinking: {"type": "disabled"}` |
+| 推理内容 | `reasoning_content` 只读不回传，避免下一轮把思维链喂回去 |
+| 用量 | `usage` 归一成整型计数，逐轮累加进输出的 `llm_usage` |
+
+重试与错误翻译（可重试才重试，指数退避 0.5s 起、上限 8s、默认 2 次，尊重 `Retry-After`）：
+
+| HTTP | 错误码 | 重试 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | 否 |
+| 401 | `AUTH` | 否 |
+| 402 | `INSUFFICIENT_BALANCE` | 否 |
+| 422 | `INVALID_PARAMETERS` | 否 |
+| 429 | `RATE_LIMITED` | 是 |
+| 500 / 502 / 503 / 504 | `SERVER_ERROR` / `SERVER_BUSY` | 是 |
+| 超时 / 连接失败 | `TIMEOUT` / `NETWORK` | 是 |
+
+配置（全部走环境变量，仓库内不含密钥）：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `mock` | `mock` / `deepseek` / `http` |
+| `DEEPSEEK_API_KEY` | — | 必填；也兼容 `LLM_API_KEY` |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 可指向代理 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 也可用 `deepseek-v4-pro` |
+| `DEEPSEEK_THINKING` | `disabled` | `enabled` 时自动去掉 `temperature` |
+| `DEEPSEEK_REASONING_EFFORT` | 空 | `none/low/high/max`，设置后覆盖 THINKING |
+| `DEEPSEEK_TIMEOUT` | `60` | 单次请求秒数 |
+| `DEEPSEEK_MAX_RETRIES` | `2` | 重试次数 |
+
+模型层失败时循环不会崩：`_agent` 捕获 `ChatError` 后 `finish(tool_error)`，
+输出里带 `model_error{code,status,retryable}`，并保证 `published=false`、不落草稿。
+
+手动联调用 `python -m scripts.smoke_deepseek`（`--full` 会再跑一遍完整示例）。
+**注意：本仓库未用真实 key 跑过联调**，只验证了报文构造、重试矩阵与失败降级（`tests/test_clients.py`）。
 
 ---
 
@@ -324,7 +370,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 ## 8. 测试策略
 
-`python -m unittest discover -s tests -v`，68 个用例，分层覆盖：
+`python -m unittest discover -s tests -v`，91 个用例，分层覆盖：
 
 | 层 | 文件 | 覆盖点 |
 | --- | --- | --- |
@@ -342,7 +388,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 
 | 项 | 现状 | 真实化要做什么 |
 | --- | --- | --- |
-| 决策模型 | 默认 `MockPolicy`（规则决策），ReAct 循环真实但决策质量不代表模型 | `LLM_PROVIDER=http` 切 `LLMPolicy`；该路径**未端到端联调**（无密钥），只用一个脚本化假模型跑通了整圈 |
+| 决策模型 | 默认 `MockPolicy`；DeepSeek 客户端（`src/clients.py`）已实现并单测 | 设置 `DEEPSEEK_API_KEY` 后 `--provider deepseek` 即可；**未用真实 key 联调**，决策质量无证据 |
 | 存储 | 单文件 JSON + 文件锁 | 换 MySQL：repository 方法体改 SQLAlchemy，`store.py` 整体替换 |
 | 并发 | 文件锁串行，单机有效 | MySQL 下用 `SELECT … FOR UPDATE` + 唯一键 |
 | 容量 | 一个时段 1 条 | `publish_window.capacity` 尚未实现 |
@@ -351,7 +397,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 批量 | 一次一个素材 | 上层循环，任一失败不阻塞其余 |
 | 并行工具 | `act` 一次只执行一个动作 | 真实模型会给多个 tool_calls，需要改成并行分支 |
 
-迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 68 个测试。
+迁移到 MySQL 的顺序：建 `sql/schema.sql` → 实现 `repository` 的 MySQL 版 → 删掉 `store.py` 的锁与原子写 → 其余代码不动 → 跑同一套 91 个测试。
 
 ---
 
@@ -362,6 +408,7 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | 入口与退出码 | [`src/main.py`](../src/main.py) |
 | ReAct 循环与限步 | [`src/graph.py`](../src/graph.py) |
 | 决策策略（Mock / LLM） | [`src/policy.py`](../src/policy.py) |
+| 模型客户端（DeepSeek / OpenAI 兼容） | [`src/clients.py`](../src/clients.py) |
 | 动作注册表与观测摘要 | [`src/registry.py`](../src/registry.py) |
 | 工具实现 | [`src/tools.py`](../src/tools.py) |
 | 审核规则 | [`src/rules.py`](../src/rules.py) |
@@ -371,3 +418,4 @@ mock 模式没有真实网络和数据库，验收靠注入：
 | MySQL 设计稿 | [`sql/schema.sql`](../sql/schema.sql) |
 | 种子数据 | [`data/seed.json`](../data/seed.json) |
 | 执行路径记录 | [`examples/run-records.md`](../examples/run-records.md) |
+| DeepSeek 联调脚本 | [`scripts/smoke_deepseek.py`](../scripts/smoke_deepseek.py) |

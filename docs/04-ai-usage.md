@@ -9,6 +9,7 @@
 | 数据层 | 起草 JSON 库的表/唯一键/事务实现 | `tests/test_store.py`：唯一键、回滚、原子写、8 线程并发 |
 | 规则 | 起草 R001–R008 规则骨架 | `tests/test_rules.py` 逐条断言结论与规则码 |
 | 编排 | 起草 LangGraph 循环、动作注册表、策略层 | `tests/test_workflow.py` 断言决策序列、限步与假模型循环 |
+| 模型客户端 | 起草 `src/clients.py`（DeepSeek 报文、重试矩阵、错误码翻译） | `tests/test_clients.py` 用假 transport 覆盖 429/5xx/400/401/402/超时，不需要真实 key |
 | 文档 | 起草 docs 各篇初稿 | 与代码行为逐条核对，删掉未实现的能力描述 |
 
 ## 我做出并保留的修改

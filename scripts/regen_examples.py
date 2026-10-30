@@ -46,7 +46,9 @@ def _run(*args: str) -> subprocess.CompletedProcess:
 
 
 def write(path: Path, text: str) -> None:
-    path.write_text(text.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
+    # Windows 下子进程 stdout 已经带 \r\n，统一折成 LF，避免整文件被 git 判成改动
+    body = text.replace("\r\n", "\n").rstrip("\n") + "\n"
+    path.write_text(body, encoding="utf-8", newline="\n")
 
 
 def main() -> int:

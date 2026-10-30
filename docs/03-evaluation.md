@@ -1,7 +1,7 @@
 # 测试与评估
 
 本页只记录离线流程验证，**未验证真实模型效果**（当前 `LLM_PROVIDER=mock`，决策由规则版 `MockPolicy` 给出）。
-运行记录见 [test-results.txt](../examples/test-results.txt)：`Ran 68 tests … OK`。
+运行记录见 [test-results.txt](../examples/test-results.txt)：`Ran 91 tests … OK`。
 
 ## 必须验收的六类
 
@@ -40,14 +40,15 @@
 A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因「审核结论缺字段」回头重读。
 三条路径的可读版见 [执行路径记录](../examples/run-records.md)。
 
-## 单元/集成测试分布（共 68）
+## 单元/集成测试分布（共 91）
 
 | 层 | 数量级 | 关注点 |
 |---|---|---|
 | `tests/test_store.py` | 10 | 唯一键、NULL 语义、自增、回滚不落盘、原子写、8 线程并发、锁 PermissionError 重试、空库初始化 |
 | `tests/test_rules.py` | 13 | R001–R008 逐条、缺失优先于风险、`metadata=None` |
-| `tests/test_llm.py` | 13 | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文解析 |
-| `tests/test_workflow.py` | 22 | 六类验收 + 补查 + 降级 + 复活 + **限步 + 决策日志 + 假模型驱动循环** |
+| `tests/test_llm.py` | 15 | 结构化优先、文本回退、硬/软识别、非法输入、HttpLLM 报文与代码围栏剥离 |
+| `tests/test_clients.py` | 20 | DeepSeek 报文、tool_calls/usage 解析、429 重试与 Retry-After、400/401/402 不重试、超时/网络错误、思考模式参数、env 工厂 |
+| `tests/test_workflow.py` | 23 | 六类验收 + 补查 + 降级 + 复活 + **限步 + 决策日志 + 假模型驱动循环 + 模型失败降级** |
 | `tests/test_cli.py` | 10 | 退出码、`invalid_input`、BOM 容错、跨进程幂等、`--now`/`--compact`/`--max-steps`/`--log` |
 
 ## 可自动化的硬断言
@@ -74,7 +75,8 @@ A 与 B 的前 4 步完全相同，第 5 步因「用户语气」分叉；C 因�
 | 步数与未完成状态 | `max_steps` 默认 10，超限返回 `step_limit_reached` | 已实现并有测试 |
 | 六类验收 | 六个示例 + 对应测试 | 全部通过 |
 | MySQL 设计保留 | `sql/schema.sql` + `docs/06` 映射表 | 保留且与 JSON 库一一对应 |
-| 模型决策质量 | 默认 `MockPolicy`，真实模型未联调 | **未验证**，不可据此评分真实模型效果 |
+| DeepSeek 接入 | `src/clients.py` + `tests/test_clients.py`（20 例） | 报文/重试/错误码已验证；**未用真实 key 联调**，需跑 `scripts/smoke_deepseek.py` 才能确认线上行为 |
+| 模型决策质量 | 默认 `MockPolicy`；DeepSeek 路径无真实运行记录 | **未验证**，不可据此评分真实模型效果 |
 | 生产可靠性 | 单文件库、文件锁、无服务化 | 局部实现；属加分项而非底线 |
 
 本仓库不能仅因目录完整被判题目达标；真实模型效果、多素材批量、并发压测均未验证。

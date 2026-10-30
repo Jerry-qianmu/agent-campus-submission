@@ -132,11 +132,13 @@
       "next": null
     }
   ],
+  "llm_usage": {},
   "message": "已保存草稿（草稿ID 2），但有待确认项：2026-11-05 18:00 该时段已被素材 M00 占用，建议改为 2026-11-05 19:00，需你确认。未发布。",
   "evidence": {
     "material_id": "M01",
     "rules_version": "r2026.11.1",
     "policy": "mock",
+    "model": "rules",
     "audit_table": "material_review",
     "schedule_table": "publish_schedule"
   },

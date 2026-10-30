@@ -53,13 +53,27 @@ agent: 收手，把待确认项交出去      → finish(needs_confirmation)
 
 没有用多 Agent、向量库或记忆：本任务不需要，加了只是噪音；框架名字也不加分，能解释取舍才有价值。
 
-## 为什么默认用 MockPolicy、真实模型怎么做
+## 为什么默认用 MockPolicy、真实模型怎么接
 
-- 没有可用密钥，`LLMPolicy` 无法端到端联调。默认 `MockPolicy` 让评审 `git clone` 就能跑通完整循环，
-  这是「离线 Mock 入口」，边界写在 README 与 [实现细节](06-implementation.md) §9：**它证明流程，不证明模型决策效果**。
-- `LLMPolicy` 不是占位：工具以 JSON Schema 交给模型，模型回 `tool_calls`，观测以 `tool` 消息回灌，
-  整个过程与 `MockPolicy` 共用同一个循环。这里用一个脚本化的假模型跑通了 5 步（`test_llm_policy_drives_the_same_loop`）。
-- 切换方式：`LLM_PROVIDER=http` + `LLM_BASE_URL/LLM_API_KEY/LLM_MODEL`。
+- 默认 `MockPolicy` 让评审 `git clone` 就能跑通完整循环，这是「离线 Mock 入口」，边界写在 README 与
+  [实现细节](06-implementation.md) §9：**它证明流程，不证明模型决策效果**。
+- 真实模型已经接好：`src/clients.py` 的 `DeepSeekClient`（继承 `OpenAICompatibleClient`）负责 HTTP、超时、
+  重试与错误码翻译；`LLMPolicy` 把 5 个工具的 JSON Schema 交给模型，读回 `tool_calls`，
+  观测以 `tool` 消息回灌——与 `MockPolicy` 共用同一个循环，只换"谁在决定"。
+- 切换方式：
+
+  ```sh
+  # PowerShell：仅当前会话
+  $env:DEEPSEEK_API_KEY = "sk-..."
+  python -m src.main --input examples/conflict.input.json --provider deepseek
+  ```
+
+  也可用 `LLM_PROVIDER=deepseek` 常驻；模型名 `--model deepseek-flash|deepseek-v4-pro`，
+  思考模式 `DEEPSEEK_THINKING=enabled|disabled`。
+- 重试只发生在可重试错误上（429/5xx/超时），400/401/402/422 直接失败——重试只会把同一个错误再花钱跑一遍。
+  模型层失败时循环 `finish(tool_error)` 并带 `model_error`，不会假装跑通。
+- **未用真实 key 联调**：本仓库只验证了报文构造、重试矩阵、失败降级（`tests/test_clients.py` 20 例）。
+  联调入口：`python -m scripts.smoke_deepseek --full`。
 
 ## 为什么数据放 JSON 而不是直接上 MySQL
 

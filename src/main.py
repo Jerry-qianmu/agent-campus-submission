@@ -62,12 +62,24 @@ def run_once(
     now: datetime | None,
     compact: bool = False,
     max_steps: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     repeat = request.get("repeat", 1)
     if isinstance(repeat, bool) or not isinstance(repeat, int) or not 1 <= repeat <= MAX_REPEAT:
         raise ValueError(f"repeat 必须是 1..{MAX_REPEAT} 的整数")
 
-    results = [run_request(request, db, now=now, max_steps=max_steps) for _ in range(repeat)]
+    results = [
+        run_request(
+            request,
+            db,
+            now=now,
+            max_steps=max_steps,
+            provider=provider,
+            model=model,
+        )
+        for _ in range(repeat)
+    ]
     result = results[-1]
 
     if repeat > 1:
@@ -104,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
         "--max-steps", type=int, help="工具调用次数上限（默认 10），达到后返回 step_limit_reached"
     )
     parser.add_argument("--log", help="把决策日志写成 JSONL（每行一步）")
+    parser.add_argument(
+        "--provider",
+        choices=("mock", "deepseek", "http"),
+        help="模型提供方；省略则读 LLM_PROVIDER，默认 mock（离线规则策略）",
+    )
+    parser.add_argument("--model", help="覆盖模型名，如 deepseek-flash / deepseek-v4-pro")
     args = parser.parse_args(argv)
 
     try:
@@ -114,7 +132,13 @@ def main(argv: list[str] | None = None) -> int:
         db, sandbox = open_database(args.db)
         try:
             result = run_once(
-                request, db, now, compact=args.compact, max_steps=args.max_steps
+                request,
+                db,
+                now,
+                compact=args.compact,
+                max_steps=args.max_steps,
+                provider=args.provider,
+                model=args.model,
             )
         finally:
             if sandbox is not None:

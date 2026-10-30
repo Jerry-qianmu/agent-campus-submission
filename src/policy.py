@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from .errors import InvalidInput
+from .clients import ChatClient, ChatResult, build_client
 from .registry import tool_schemas
 from .util import parse_datetime, to_iso
 
@@ -42,6 +42,7 @@ class Decision:
     tool: str | None = None
     args: dict[str, Any] = field(default_factory=dict)
     finish_payload: dict[str, Any] | None = None
+    usage: dict[str, int] | None = None
 
     @property
     def is_finish(self) -> bool:
@@ -298,8 +299,6 @@ class MockPolicy:
 # ---------------------------------------------------------------------------
 # 真实模型策略
 # ---------------------------------------------------------------------------
-Transport = Callable[[str, dict[str, str], bytes], str]
-
 SYSTEM_PROMPT = """你是短视频素材的发布排期助手。你只能通过工具获取事实，禁止猜测。
 
 规则：
@@ -312,54 +311,29 @@ SYSTEM_PROMPT = """你是短视频素材的发布排期助手。你只能通过�
 """
 
 
-def _urllib_transport(url: str, headers: dict[str, str], body: bytes) -> str:
-    import urllib.request
-
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-        return response.read().decode("utf-8")
-
-
 def coerce_status(value: Any) -> str:
     """模型可能给出非法状态，收敛到允许集合，宁可 blocked 也不能谎报完成。"""
     return value if value in FINISH_STATUSES else "blocked"
 
 
 class LLMPolicy:
-    """OpenAI 兼容的 tool-calling 循环。未在本仓库端到端联调（无密钥），仅单测报文解析。"""
+    """把工具清单交给模型、读回 tool_calls。循环与 MockPolicy 完全共用，只换"谁在决定"。"""
 
     name = "llm"
 
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        model: str,
-        transport: Transport | None = None,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.model = model
-        self.transport = transport or _urllib_transport
+    def __init__(self, client: ChatClient, system_prompt: str = SYSTEM_PROMPT) -> None:
+        self.client = client
+        self.system_prompt = system_prompt
+        self.model = getattr(client, "model", "")
+        self.name = getattr(client, "name", "llm")  # mode 会显示成 deepseek_react / openai_react
 
     def decide(self, ctx: Context) -> Decision:
-        body = {
-            "model": self.model,
-            "temperature": 0,
-            "tools": tool_schemas(),
-            "tool_choice": "auto",
-            "messages": self._messages(ctx),
-        }
-        raw = self.transport(
-            f"{self.base_url}/chat/completions",
-            {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
-            json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        )
-        return self.parse_response(raw)
+        result = self.client.chat(self._messages(ctx), tools=tool_schemas())
+        return self._decide(result)
 
     def _messages(self, ctx: Context) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {
                 "role": "user",
                 "content": json.dumps(
@@ -408,42 +382,51 @@ class LLMPolicy:
             )
         return messages
 
-    def parse_response(self, raw: str) -> Decision:
-        try:
-            message = json.loads(raw)["choices"][0]["message"]
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-            raise InvalidInput(f"模型返回不是合法 JSON：{exc}") from exc
-
-        rationale = (message.get("content") or "").strip() or "模型未给出理由"
-        calls = message.get("tool_calls") or []
+    def _decide(self, result: ChatResult) -> Decision:
+        rationale = (result.content or "").strip()
+        calls = result.tool_calls
         if not calls:
-            return finish("blocked", rationale, reason="模型没有选择任何动作")
+            # 模型没调工具：可能是它认为可以直接回答。按"没给出可执行结论"处理，不瞎猜。
+            return finish(
+                "blocked",
+                rationale or "模型没有选择任何动作",
+                reason=(result.content or "").strip()[:200] or "模型没有选择任何动作",
+            )
 
-        function = calls[0].get("function") or {}
-        name = function.get("name") or ""
+        call = calls[0]
+        name = call.get("name") or ""
+        if not rationale:
+            rationale = f"模型选择调用 {name}"
         try:
-            args = json.loads(function.get("arguments") or "{}")
+            args = json.loads(call.get("arguments") or "{}")
         except json.JSONDecodeError:
-            return finish("tool_error", rationale, reason=f"动作参数不是合法 JSON：{name}")
+            decision = finish(
+                "tool_error", rationale, reason=f"动作参数不是合法 JSON：{name}"
+            )
+            return replace(decision, usage=result.usage or None)
+        if not isinstance(args, dict):
+            decision = finish("tool_error", rationale, reason="动作参数必须是 JSON 对象")
+            return replace(decision, usage=result.usage or None)
 
         if name == "finish":
-            return finish(
+            decision = finish(
                 coerce_status(args.get("status")),
                 rationale,
                 reason=args.get("reason"),
                 pending=args.get("pending"),
                 suggested_slot=args.get("suggested_slot"),
             )
-        return action(name, args, rationale)
+        else:
+            decision = action(name, args, rationale)
+        return replace(decision, usage=result.usage or None)
 
 
-def get_policy() -> Policy:
-    provider = (os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
-    if provider == "mock":
+def get_policy(provider: str | None = None, model: str | None = None) -> Policy:
+    """按 provider 选择策略：mock 走规则，deepseek/http 走真实模型。"""
+    resolved = (provider or os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    if resolved in ("mock", "offline"):
         return MockPolicy()
-    base_url = os.environ.get("LLM_BASE_URL")
-    api_key = os.environ.get("LLM_API_KEY")
-    model = os.environ.get("LLM_MODEL")
-    if not (base_url and api_key and model):
-        raise InvalidInput("LLM_PROVIDER=http 需要同时配置 LLM_BASE_URL/LLM_API_KEY/LLM_MODEL")
-    return LLMPolicy(base_url=base_url, api_key=api_key, model=model)
+    client = build_client(resolved, model)
+    if client is None:  # pragma: no cover - build_client 不会在非 mock 时返回 None
+        return MockPolicy()
+    return LLMPolicy(client)

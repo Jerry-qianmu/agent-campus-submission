@@ -111,11 +111,13 @@
       "next": null
     }
   ],
+  "llm_usage": {},
   "message": "已阻断：2026-11-05 18:00 已被占用，硬性要求未改动。未保存草稿。",
   "evidence": {
     "material_id": "M01",
     "rules_version": "r2026.11.1",
     "policy": "mock",
+    "model": "rules",
     "audit_table": "material_review",
     "schedule_table": "publish_schedule"
   },

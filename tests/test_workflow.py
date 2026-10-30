@@ -2,6 +2,7 @@ import copy
 import json
 import unittest
 
+from src.clients import OpenAICompatibleClient
 from src.graph import run_request
 from src.policy import LLMPolicy
 from support import NOW, TempDb, load_example, read_table
@@ -289,11 +290,12 @@ class WorkflowTests(unittest.TestCase):
                 }
             )
 
-        policy = LLMPolicy("https://api.demo/v1", "k", "demo", transport=transport)
+        client = OpenAICompatibleClient("k", "https://api.demo/v1", "demo", transport=transport)
+        policy = LLMPolicy(client)
         with TempDb() as db:
             result = run_request(load_example("normal"), db, now=NOW, policy=policy)
 
-        self.assertEqual(result["mode"], "llm_react")
+        self.assertEqual(result["mode"], "openai_react")
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["draft"]["draft_id"], 2)
         self.assertEqual(
@@ -304,6 +306,25 @@ class WorkflowTests(unittest.TestCase):
         second_round = seen["bodies"][1]["messages"]
         self.assertTrue(any(message["role"] == "tool" for message in second_round))
         self.assertEqual(len(seen["bodies"][1]["tools"]), 6)  # 5 个业务工具 + finish
+        self.assertEqual(seen["bodies"][1]["tool_choice"], "auto")
+
+    def test_model_failure_finishes_with_tool_error(self):
+        """模型层失败（超时/鉴权/余额）必须如实报错，而不是继续猜。"""
+        from src.clients import ChatError
+
+        class BrokenPolicy:
+            name = "broken"
+
+            def decide(self, ctx):
+                raise ChatError("鉴权失败", code="AUTH", status=401, retryable=False)
+
+        with TempDb() as db:
+            result = run_request(load_example("normal"), db, now=NOW, policy=BrokenPolicy())
+        self.assertEqual(result["status"], "tool_error")
+        self.assertTrue(result["finished"])
+        self.assertFalse(result["draft"]["saved"])
+        self.assertIn("鉴权失败", result["message"])
+        self.assertEqual(result["model_error"]["code"], "AUTH")
 
 
 if __name__ == "__main__":

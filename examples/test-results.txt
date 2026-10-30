@@ -11,7 +11,29 @@ test_missing_file (test_cli.CliTests.test_missing_file) ... ok
 test_normal_example (test_cli.CliTests.test_normal_example) ... ok
 test_now_override (test_cli.CliTests.test_now_override) ... ok
 test_persistent_db_dedupes_across_processes (test_cli.CliTests.test_persistent_db_dedupes_across_processes) ... ok
-test_malformed_response_raises (test_llm.HttpLLMTests.test_malformed_response_raises) ... ok
+test_defaults (test_clients.DeepSeekTests.test_defaults) ... ok
+test_reasoning_effort_overrides_thinking (test_clients.DeepSeekTests.test_reasoning_effort_overrides_thinking) ... ok
+test_thinking_disabled_payload (test_clients.DeepSeekTests.test_thinking_disabled_payload) ... ok
+test_thinking_enabled_drops_temperature (test_clients.DeepSeekTests.test_thinking_enabled_drops_temperature) ... ok
+test_tools_and_tool_choice (test_clients.DeepSeekTests.test_tools_and_tool_choice) ... ok
+test_deepseek_reads_env (test_clients.FactoryTests.test_deepseek_reads_env) ... ok
+test_deepseek_requires_key (test_clients.FactoryTests.test_deepseek_requires_key) ... ok
+test_mock_returns_none (test_clients.FactoryTests.test_mock_returns_none) ... ok
+test_unknown_provider (test_clients.FactoryTests.test_unknown_provider) ... ok
+test_bad_json_response (test_clients.ParseTests.test_bad_json_response) ... ok
+test_missing_choices (test_clients.ParseTests.test_missing_choices) ... ok
+test_parses_tool_calls_usage_and_reasoning (test_clients.ParseTests.test_parses_tool_calls_usage_and_reasoning) ... ok
+test_400_is_not_retried (test_clients.RetryTests.test_400_is_not_retried) ... ok
+test_401_auth_not_retried (test_clients.RetryTests.test_401_auth_not_retried) ... ok
+test_402_insufficient_balance (test_clients.RetryTests.test_402_insufficient_balance) ... ok
+test_5xx_exhausts_retries_then_raises (test_clients.RetryTests.test_5xx_exhausts_retries_then_raises) ... ok
+test_honours_retry_after_header (test_clients.RetryTests.test_honours_retry_after_header) ... ok
+test_network_error_maps_to_network (test_clients.RetryTests.test_network_error_maps_to_network) ... ok
+test_retries_429_then_succeeds (test_clients.RetryTests.test_retries_429_then_succeeds) ... ok
+test_timeout_is_retried_then_raises (test_clients.RetryTests.test_timeout_is_retried_then_raises) ... ok
+test_code_fence_is_stripped (test_llm.HttpLLMTests.test_code_fence_is_stripped) ... ok
+test_malformed_response_raises_chat_error (test_llm.HttpLLMTests.test_malformed_response_raises_chat_error) ... ok
+test_non_json_content_raises_invalid_input (test_llm.HttpLLMTests.test_non_json_content_raises_invalid_input) ... ok
 test_parses_openai_style_payload (test_llm.HttpLLMTests.test_parses_openai_style_payload) ... ok
 test_default_constraint_is_soft (test_llm.MockLLMTests.test_default_constraint_is_soft) ... ok
 test_floor_to_hour (test_llm.MockLLMTests.test_floor_to_hour) ... ok
@@ -64,6 +86,8 @@ test_llm_policy_drives_the_same_loop (test_workflow.WorkflowTests.test_llm_polic
 test_metadata_lag_recovers_after_recheck (test_workflow.WorkflowTests.test_metadata_lag_recovers_after_recheck) ... ok
 test_missing_material_id_asks_for_it (test_workflow.WorkflowTests.test_missing_material_id_asks_for_it) ... ok
 test_missing_material_info_blocks (test_workflow.WorkflowTests.test_missing_material_info_blocks) ... ok
+test_model_failure_finishes_with_tool_error (test_workflow.WorkflowTests.test_model_failure_finishes_with_tool_error)
+模型层失败（超时/鉴权/余额）必须如实报错，而不是继续猜。 ... ok
 test_no_desired_slot_picks_first_free (test_workflow.WorkflowTests.test_no_desired_slot_picks_first_free) ... ok
 test_normal_completes_with_draft (test_workflow.WorkflowTests.test_normal_completes_with_draft) ... ok
 test_notify_failure_degrades_without_blocking (test_workflow.WorkflowTests.test_notify_failure_degrades_without_blocking) ... ok
@@ -80,6 +104,6 @@ test_tool_failure_is_retryable_but_still_fails (test_workflow.WorkflowTests.test
 test_unknown_material (test_workflow.WorkflowTests.test_unknown_material) ... ok
 
 ----------------------------------------------------------------------
-Ran 68 tests in 10.889s
+Ran 91 tests in 10.809s
 
 OK
